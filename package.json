@@ -1,0 +1,22 @@
+{
+  "scripts": {
+    "start": "npm run http-server && npm run watchify",
+    "watchify": "watchify -p browserify-hmr browser.js -o bundle.js"
+  },
+  "devDependencies": {
+    "browserify-hmr": "^0.2.2",
+    "http-server": "^0.8.0",
+    "watchify": "^3.4.0",
+    "webpack-dev-server": "^1.10.1"
+  },
+  "dependencies": {
+    "fft-js": "0.0.9",
+    "kefir": "^3.1.0",
+    "main-loop": "^3.2.0",
+    "mercury": "^14.0.0",
+    "simple-linear-scale": "^1.0.1",
+    "socket.io-client": "^1.3.7",
+    "virtual-dom": "^2.1.1",
+    "webpack": "^1.12.2"
+  }
+}
