@@ -2,9 +2,6 @@
 
 live-code with your biosignals 
 
-Using hot reloading while developing can improve your workflow.
-No more clicking through your application to a particular state each time you change the rendering code!
-
 ## Running the examples
 
 To install and run:
