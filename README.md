@@ -16,6 +16,14 @@ To install and run:
 
 ## How it works
 
+## indra
+
+if you can feed your data through the indra system, you can use spectral-charmer right out of the box.
+
+check the [indra-server](https://github.com/indra-net/collection-server) project here for more information.
+
+contact @elsehow if you want access to the [BioSENSE](http://biosense.berkeley.edu) group's indra node.
+
 ### webpack
 We use browserify-hmr with watchify.
 We use [http-server][] to host our example. 
