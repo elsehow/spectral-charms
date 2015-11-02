@@ -28,9 +28,10 @@ var bands = [
   }
 ]
 
-module.exports = function (bandName) {
+module.exports = function (bandName, stream) {
   var band = _.first(_.filter(bands, 'name', bandName))
-  return function (list) {
+  var bp = function (list) {
     return _.slice(list, band.min, band.max)
   }
+  return stream.map(bp)
 }

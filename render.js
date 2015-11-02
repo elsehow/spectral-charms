@@ -1,12 +1,10 @@
 'use strict';
-var fftjs = require('fft-js')
-  , fft = fftjs.fft
-  , fftMag = fftjs.util.fftMag
-  , magnitudes = function (vs) { return fftMag(fft(vs)) }
 
 // patches
+var Faucet = require('./patches/Faucet.js')
 //var Averager = require('./patches/Averager.js')
 var Bandpass = require('./patches/Bandpass.js')
+var FFT = require('./patches/FFT.js')
 
 // views
 var NumberView = require('./views/Number.js')
@@ -16,10 +14,11 @@ var Spectrogram = require('./views/Spectrogram.js')
 module.exports = function render (stream, draw) {
 
   var buffers = stream.map(function (b) { return b.rawBuffer })
-  var ffts = buffers.map(magnitudes)
 
-  var a = ffts.map(Bandpass('alpha'))
-  var b = ffts.map(Bandpass('beta'))
+  var s = FFT(buffers)
+
+  var a = Bandpass('alpha', s)
+  var b = Bandpass('beta', s)
 
   draw(a, BarGraph, 'alpha last spectrum')
   draw(a, Spectrogram, 'alpha spectra')

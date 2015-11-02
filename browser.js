@@ -11,7 +11,7 @@ function bootstrap (appSetupFn) {
   // remove old listeners from the websocket
   socket.removeAllListeners()
 
-  // set up a fresh stream from the socket 
+  // make a fresh stream
   var stream = Kefir.fromEvents(socket, 'mindwave-raw-buffers')
 
   // remove everything from our container

@@ -1,3 +1,3 @@
-module.exports = function (arr) {
-  return [ require('average')(arr) ]
+module.exports = function (stream) {
+  return stream.map(require('average'))
 }
