@@ -11,9 +11,6 @@ function bootstrap (appBootstrapFn) {
   // remove old listeners from the websocket
   socket.removeAllListeners()
 
-  // make a fresh stream
-  var stream = Kefir.fromEvents(socket, 'mindwave-raw-buffers')
-
   // remove everything from our container
   appEl.innerHTML = ''
 
@@ -42,7 +39,7 @@ function bootstrap (appBootstrapFn) {
   }
   
   // pass the stream and the draw fn into the app bootstrap 
-  appBootstrapFn(stream, draw)
+  appBootstrapFn(socket, draw)
 
 }
 
@@ -57,7 +54,7 @@ function App () {
 socket.on('connect', function () {
   
   var appState = App();
-  
+
   // bootstrap for starters
   bootstrap(require('./app.js'))
   

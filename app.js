@@ -11,14 +11,17 @@ var NumberView = require('./views/Number.js')
 var BarGraph = require('./views/BarGraph.js')
 var Spectrogram = require('./views/Spectrogram.js')
 
-module.exports = function render (stream, draw) {
+module.exports = function render (socket, draw) {
+
+  // make a fresh stream
+  var stream = Faucet(socket, 'mindwave-raw-buffers')
 
   var buffers = stream.map(function (b) { return b.rawBuffer })
 
   var s = FFT(buffers)
 
-  var a = Bandpass('alpha', s)
-  var b = Bandpass('beta', s)
+  var a = Bandpass(s, 'alpha')
+  var b = Bandpass(s, 'beta')
 
   draw(a, BarGraph, 'alpha last spectrum')
   draw(a, Spectrogram, 'alpha spectra')
