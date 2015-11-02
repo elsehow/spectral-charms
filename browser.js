@@ -6,32 +6,44 @@ var hg = require('mercury')
   , main = require('main-loop')
   , appEl = document.getElementById('app')
 
-  // TODO  main-loop
-  // naive move: 
-  //   clear the whole parent div
-  //   pass stream,draw to 'render'
-  //   try bandpass + spectrogram..
-function setup (render) {
+function bootstrap (appSetupFn) {
+
   // remove old listeners from the websocket
   socket.removeAllListeners()
+
   // set up a fresh stream from the socket 
   var stream = Kefir.fromEvents(socket, 'mindwave-raw-buffers')
+
   // remove everything from our container
   appEl.innerHTML = ''
+
   // setup a function by which stuff in render can draw on the dom
-  function draw (trackStream, drawFn, trackDescription) {
+  function draw (trackStream, viewModule, trackDescription) {
+
+    // add a div to the page
     var parent = document.createElement('div')
     var desc   = document.createTextNode(trackDescription)
     parent.appendChild(desc)
-  
     appEl.appendChild(parent)
-  
-    var loop = main([], drawFn, require('virtual-dom'))
+
+    // execute the view module to return the view's draw fn
+    // (this lets us keep state in the view module)
+    var viewDrawFn = viewModule()
+
+    var loop = main([], viewDrawFn, require('virtual-dom'))
+
+    // add loop to the div
     parent.appendChild(loop.target)
   
+    // set each value in the track's output stream 
+    // to trigger a `loop.update`, which in turn triggers viewDrawFn
     trackStream.onValue(loop.update)
+
   }
-  render(stream, draw)
+  
+  // pass the stream and the draw fn into the app bootstrap 
+  appSetupFn(stream, draw)
+
 }
 
 // Copied from examples/count.js
@@ -46,7 +58,7 @@ socket.on('connect', function () {
   
   var appState = App();
   
-  setup(require('./render.js'))
+  bootstrap(require('./render.js'))
   
   // Special sauce: detect changes to the rendering code and swap the rendering
   // function out without reloading the page.
@@ -55,7 +67,7 @@ socket.on('connect', function () {
       module.hot.accept('./render.js', function swapModule () {
   
         // set up the view again
-        setup(require('./render.js'))
+        bootstrap(require('./render.js'))
   
         // Force a re-render by changing the application state.
         appState._hotVersion.set(appState._hotVersion() + 1);

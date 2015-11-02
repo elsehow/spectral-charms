@@ -1,6 +1,7 @@
 {
   "scripts": {
     "start": "npm run http-server && npm run watchify",
+    "http-server": "http-server -c 1 -a localhost &",
     "watchify": "watchify -p browserify-hmr browser.js -o bundle.js"
   },
   "devDependencies": {
@@ -10,8 +11,10 @@
     "webpack-dev-server": "^1.10.1"
   },
   "dependencies": {
+    "circular-buffer": "0.0.6",
     "fft-js": "0.0.9",
     "kefir": "^3.1.0",
+    "log-scale": "^1.0.1",
     "main-loop": "^3.2.0",
     "mercury": "^14.0.0",
     "simple-linear-scale": "^1.0.1",

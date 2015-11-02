@@ -9,32 +9,44 @@ var hg = require('mercury')
   , main = require('main-loop')
   , appEl = document.getElementById('app')
 
-  // TODO  main-loop
-  // naive move: 
-  //   clear the whole parent div
-  //   pass stream,draw to 'render'
-  //   try bandpass + spectrogram..
-function setup (render) {
+function bootstrap (appSetupFn) {
+
   // remove old listeners from the websocket
   socket.removeAllListeners()
+
   // set up a fresh stream from the socket 
   var stream = Kefir.fromEvents(socket, 'mindwave-raw-buffers')
+
   // remove everything from our container
   appEl.innerHTML = ''
+
   // setup a function by which stuff in render can draw on the dom
-  function draw (trackStream, drawFn, trackDescription) {
+  function draw (trackStream, viewModule, trackDescription) {
+
+    // add a div to the page
     var parent = document.createElement('div')
     var desc   = document.createTextNode(trackDescription)
     parent.appendChild(desc)
-  
     appEl.appendChild(parent)
-  
-    var loop = main([], drawFn, require('virtual-dom'))
+
+    // execute the view module to return the view's draw fn
+    // (this lets us keep state in the view module)
+    var viewDrawFn = viewModule()
+
+    var loop = main([], viewDrawFn, require('virtual-dom'))
+
+    // add loop to the div
     parent.appendChild(loop.target)
   
+    // set each value in the track's output stream 
+    // to trigger a `loop.update`, which in turn triggers viewDrawFn
     trackStream.onValue(loop.update)
+
   }
-  render(stream, draw)
+  
+  // pass the stream and the draw fn into the app bootstrap 
+  appSetupFn(stream, draw)
+
 }
 
 // Copied from examples/count.js
@@ -49,7 +61,7 @@ socket.on('connect', function () {
   
   var appState = App();
   
-  setup(require('./render.js'))
+  bootstrap(require('./render.js'))
   
   // Special sauce: detect changes to the rendering code and swap the rendering
   // function out without reloading the page.
@@ -58,7 +70,7 @@ socket.on('connect', function () {
       module.hot.accept('./render.js', function swapModule () {
   
         // set up the view again
-        setup(require('./render.js'))
+        bootstrap(require('./render.js'))
   
         // Force a re-render by changing the application state.
         appState._hotVersion.set(appState._hotVersion() + 1);
@@ -73,7 +85,7 @@ socket.on('connect', function () {
 
 }).apply(this, arguments);
 
-},{"./render.js":177,"./socket.js":178,"kefir":63,"main-loop":65,"mercury":66,"virtual-dom":146}],3:[function(require,module,exports){
+},{"./render.js":180,"./socket.js":181,"kefir":64,"main-loop":67,"mercury":68,"virtual-dom":148}],3:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/adiff/index.js", module);
 (function(){
 function head (a) {
@@ -1103,6 +1115,90 @@ function reduce (xs, f, acc) {
 }).apply(this, arguments);
 
 },{}],13:[function(require,module,exports){
+_hmr["websocket:null"].initModule("node_modules/circular-buffer/index.js", module);
+(function(){
+function CircularBuffer(capacity){
+	if(!(this instanceof CircularBuffer))return new CircularBuffer(capacity);
+	if(typeof capacity=="object"&&
+		Array.isArray(capacity["_buffer"])&&
+		typeof capacity._capacity=="number"&&
+		typeof capacity._first=="number"&&
+		typeof capacity._size=="number"){
+		for(var prop in capacity){
+			if(capacity.hasOwnProperty(prop))this[prop]=capacity[prop];
+		}
+	} else {
+		if(typeof capacity!="number"||capacity%1!=0||capacity<1)
+			throw new TypeError("Invalid capacity");
+		this._buffer=new Array(capacity);
+		this._capacity=capacity;
+		this._first=0;
+		this._size=0;
+	}
+}
+
+CircularBuffer.prototype={
+	size:function(){return this._size;},
+	capacity:function(){return this._capacity;},
+	enq:function(value){
+		if(this._first>0)this._first--; else this._first=this._capacity-1;
+		this._buffer[this._first]=value;
+		if(this._size<this._capacity)this._size++;
+	},
+	push:function(value){
+		if(this._size==this._capacity){
+			this._buffer[this._first]=value;
+			this._first=(this._first+1)%this._capacity;
+		} else {
+			this._buffer[(this._first+this._size)%this._capacity]=value;
+			this._size++;
+		}
+	},
+	deq:function(){
+		if(this._size==0)throw new RangeError("dequeue on empty buffer");
+		var value=this._buffer[(this._first+this._size-1)%this._capacity];
+		this._size--;
+		return value;
+	},
+	pop:function(){return this.deq();},
+	shift:function(){
+		if(this._size==0)throw new RangeError("shift on empty buffer");
+		var value=this._buffer[this._first];
+		if(this._first==this._capacity-1)this._first=0; else this._first++;
+		this._size--;
+		return value;
+	},
+	get:function(start,end){
+		if(this._size==0&&start==0&&(end==undefined||end==0))return [];
+		if(typeof start!="number"||start%1!=0||start<0)throw new TypeError("Invalid start");
+		if(start>=this._size)throw new RangeError("Index past end of buffer: "+start);
+
+		if(end==undefined)return this._buffer[(this._first+start)%this._capacity];
+
+		if(typeof end!="number"||end%1!=0||end<0)throw new TypeError("Invalid end");
+		if(end>=this._size)throw new RangeError("Index past end of buffer: "+end);
+
+		if(this._first+start>=this._capacity){
+			//make sure first+start and first+end are in a normal range
+			start-=this._capacity; //becomes a negative number
+			end-=this._capacity;
+		}
+		if(this._first+end<this._capacity)
+			return this._buffer.slice(this._first+start,this._first+end+1);
+		else
+			return this._buffer.slice(this._first+start,this._capacity).concat(this._buffer.slice(0,this._first+end+1-this._capacity));
+	},
+	toarray:function(){
+		if(this._size==0)return [];
+		return this.get(0,this._size-1);
+	}
+};
+
+module.exports=CircularBuffer;
+
+}).apply(this, arguments);
+
+},{}],14:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/component-bind/index.js", module);
 (function(){
 /**
@@ -1131,7 +1227,7 @@ module.exports = function(obj, fn){
 
 }).apply(this, arguments);
 
-},{}],14:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/component-emitter/index.js", module);
 (function(){
 
@@ -1301,7 +1397,7 @@ Emitter.prototype.hasListeners = function(event){
 
 }).apply(this, arguments);
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/component-inherit/index.js", module);
 (function(){
 
@@ -1313,7 +1409,7 @@ module.exports = function(a, b){
 };
 }).apply(this, arguments);
 
-},{}],16:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/cuid/dist/browser-cuid.js", module);
 (function(){
 /**
@@ -1429,7 +1525,7 @@ _hmr["websocket:null"].initModule("node_modules/cuid/dist/browser-cuid.js", modu
 
 }).apply(this, arguments);
 
-},{}],17:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/dom-delegator/add-event.js", module);
 (function(){
 var EvStore = require("ev-store")
@@ -1453,7 +1549,7 @@ function addEvent(target, type, handler) {
 
 }).apply(this, arguments);
 
-},{"ev-store":41}],18:[function(require,module,exports){
+},{"ev-store":42}],19:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/dom-delegator/dom-delegator.js", module);
 (function(){
 var globalDocument = require("global/document")
@@ -1646,7 +1742,7 @@ function Handle() {
 
 }).apply(this, arguments);
 
-},{"./add-event.js":17,"./proxy-event.js":21,"./remove-event.js":22,"ev-store":41,"global/document":20,"weakmap-shim/create-store":171}],19:[function(require,module,exports){
+},{"./add-event.js":18,"./proxy-event.js":22,"./remove-event.js":23,"ev-store":42,"global/document":21,"weakmap-shim/create-store":173}],20:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/dom-delegator/index.js", module);
 (function(){
 var Individual = require("individual")
@@ -1712,7 +1808,7 @@ Delegator.transformHandle = DOMDelegator.transformHandle;
 
 }).apply(this, arguments);
 
-},{"./dom-delegator.js":18,"cuid":16,"global/document":20,"individual":58}],20:[function(require,module,exports){
+},{"./dom-delegator.js":19,"cuid":17,"global/document":21,"individual":59}],21:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/dom-delegator/node_modules/global/document.js", module);
 (function(){
 (function (global){
@@ -1735,7 +1831,7 @@ if (typeof document !== 'undefined') {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{"min-document":10}],21:[function(require,module,exports){
+},{"min-document":10}],22:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/dom-delegator/proxy-event.js", module);
 (function(){
 var inherits = require("inherits")
@@ -1819,7 +1915,7 @@ inherits(KeyEvent, ProxyEvent)
 
 }).apply(this, arguments);
 
-},{"inherits":59}],22:[function(require,module,exports){
+},{"inherits":60}],23:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/dom-delegator/remove-event.js", module);
 (function(){
 var EvStore = require("ev-store")
@@ -1844,7 +1940,7 @@ function removeEvent(target, type, handler) {
 
 }).apply(this, arguments);
 
-},{"ev-store":41}],23:[function(require,module,exports){
+},{"ev-store":42}],24:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/dom-walk/index.js", module);
 (function(){
 var slice = Array.prototype.slice
@@ -1874,7 +1970,7 @@ function iterativelyWalk(nodes, cb) {
 
 }).apply(this, arguments);
 
-},{}],24:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/index.js", module);
 (function(){
 
@@ -1882,7 +1978,7 @@ module.exports =  require('./lib/');
 
 }).apply(this, arguments);
 
-},{"./lib/":25}],25:[function(require,module,exports){
+},{"./lib/":26}],26:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/lib/index.js", module);
 (function(){
 
@@ -1898,7 +1994,7 @@ module.exports.parser = require('engine.io-parser');
 
 }).apply(this, arguments);
 
-},{"./socket":26,"engine.io-parser":38}],26:[function(require,module,exports){
+},{"./socket":27,"engine.io-parser":39}],27:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/lib/socket.js", module);
 (function(){
 (function (global){
@@ -2611,7 +2707,7 @@ Socket.prototype.filterUpgrades = function (upgrades) {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{"./transport":27,"./transports":28,"component-emitter":14,"debug":34,"engine.io-parser":38,"indexof":57,"parsejson":109,"parseqs":110,"parseuri":37}],27:[function(require,module,exports){
+},{"./transport":28,"./transports":29,"component-emitter":15,"debug":35,"engine.io-parser":39,"indexof":58,"parsejson":111,"parseqs":112,"parseuri":38}],28:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/lib/transport.js", module);
 (function(){
 /**
@@ -2776,7 +2872,7 @@ Transport.prototype.onClose = function () {
 
 }).apply(this, arguments);
 
-},{"component-emitter":14,"engine.io-parser":38}],28:[function(require,module,exports){
+},{"component-emitter":15,"engine.io-parser":39}],29:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/lib/transports/index.js", module);
 (function(){
 (function (global){
@@ -2837,7 +2933,7 @@ function polling(opts){
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{"./polling-jsonp":29,"./polling-xhr":30,"./websocket":32,"xmlhttprequest":33}],29:[function(require,module,exports){
+},{"./polling-jsonp":30,"./polling-xhr":31,"./websocket":33,"xmlhttprequest":34}],30:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/lib/transports/polling-jsonp.js", module);
 (function(){
 (function (global){
@@ -3078,7 +3174,7 @@ JSONPPolling.prototype.doWrite = function (data, fn) {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{"./polling":31,"component-inherit":15}],30:[function(require,module,exports){
+},{"./polling":32,"component-inherit":16}],31:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/lib/transports/polling-xhr.js", module);
 (function(){
 (function (global){
@@ -3470,7 +3566,7 @@ function unloadHandler() {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{"./polling":31,"component-emitter":14,"component-inherit":15,"debug":34,"xmlhttprequest":33}],31:[function(require,module,exports){
+},{"./polling":32,"component-emitter":15,"component-inherit":16,"debug":35,"xmlhttprequest":34}],32:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/lib/transports/polling.js", module);
 (function(){
 /**
@@ -3721,7 +3817,7 @@ Polling.prototype.uri = function(){
 
 }).apply(this, arguments);
 
-},{"../transport":27,"component-inherit":15,"debug":34,"engine.io-parser":38,"parseqs":110,"xmlhttprequest":33}],32:[function(require,module,exports){
+},{"../transport":28,"component-inherit":16,"debug":35,"engine.io-parser":39,"parseqs":112,"xmlhttprequest":34}],33:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/lib/transports/websocket.js", module);
 (function(){
 /**
@@ -3965,7 +4061,7 @@ WS.prototype.check = function(){
 
 }).apply(this, arguments);
 
-},{"../transport":27,"component-inherit":15,"debug":34,"engine.io-parser":38,"parseqs":110,"ws":173}],33:[function(require,module,exports){
+},{"../transport":28,"component-inherit":16,"debug":35,"engine.io-parser":39,"parseqs":112,"ws":175}],34:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/lib/xmlhttprequest.js", module);
 (function(){
 // browser shim for xmlhttprequest module
@@ -4007,7 +4103,7 @@ module.exports = function(opts) {
 
 }).apply(this, arguments);
 
-},{"has-cors":56}],34:[function(require,module,exports){
+},{"has-cors":57}],35:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/node_modules/debug/browser.js", module);
 (function(){
 
@@ -4160,7 +4256,7 @@ exports.enable(load());
 
 }).apply(this, arguments);
 
-},{"./debug":35}],35:[function(require,module,exports){
+},{"./debug":36}],36:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/node_modules/debug/debug.js", module);
 (function(){
 
@@ -4363,7 +4459,7 @@ function coerce(val) {
 
 }).apply(this, arguments);
 
-},{"ms":36}],36:[function(require,module,exports){
+},{"ms":37}],37:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/node_modules/ms/index.js", module);
 (function(){
 /**
@@ -4480,7 +4576,7 @@ function plural(ms, n, name) {
 
 }).apply(this, arguments);
 
-},{}],37:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-client/node_modules/parseuri/index.js", module);
 (function(){
 /**
@@ -4525,7 +4621,7 @@ module.exports = function parseuri(str) {
 
 }).apply(this, arguments);
 
-},{}],38:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-parser/lib/browser.js", module);
 (function(){
 (function (global){
@@ -5127,7 +5223,7 @@ exports.decodePayloadAsBinary = function (data, binaryType, callback) {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{"./keys":39,"after":4,"arraybuffer.slice":5,"base64-arraybuffer":7,"blob":9,"has-binary":55,"utf8":129}],39:[function(require,module,exports){
+},{"./keys":40,"after":4,"arraybuffer.slice":5,"base64-arraybuffer":7,"blob":9,"has-binary":56,"utf8":131}],40:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/engine.io-parser/lib/keys.js", module);
 (function(){
 
@@ -5152,7 +5248,7 @@ module.exports = Object.keys || function keys (obj){
 
 }).apply(this, arguments);
 
-},{}],40:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/error/typed.js", module);
 (function(){
 var camelize = require("camelize")
@@ -5206,7 +5302,7 @@ function TypedError(args) {
 
 }).apply(this, arguments);
 
-},{"camelize":12,"string-template":127,"xtend/mutable":176}],41:[function(require,module,exports){
+},{"camelize":12,"string-template":129,"xtend/mutable":178}],42:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/ev-store/index.js", module);
 (function(){
 'use strict';
@@ -5232,7 +5328,7 @@ function EvStore(elem) {
 
 }).apply(this, arguments);
 
-},{"individual/one-version":43}],42:[function(require,module,exports){
+},{"individual/one-version":44}],43:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/ev-store/node_modules/individual/index.js", module);
 (function(){
 (function (global){
@@ -5259,7 +5355,7 @@ function Individual(key, value) {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{}],43:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/ev-store/node_modules/individual/one-version.js", module);
 (function(){
 'use strict';
@@ -5287,7 +5383,7 @@ function OneVersion(moduleName, version, defaultValue) {
 
 }).apply(this, arguments);
 
-},{"./index.js":42}],44:[function(require,module,exports){
+},{"./index.js":43}],45:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/fft-js/index.js", module);
 (function(){
 /*===========================================================================*\
@@ -5307,7 +5403,7 @@ module.exports = {
 
 }).apply(this, arguments);
 
-},{"./src/dft":46,"./src/fft":47,"./src/fftutil":48}],45:[function(require,module,exports){
+},{"./src/dft":47,"./src/fft":48,"./src/fftutil":49}],46:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/fft-js/src/complex.js", module);
 (function(){
 //-------------------------------------------------
@@ -5359,7 +5455,7 @@ module.exports = {
 
 }).apply(this, arguments);
 
-},{}],46:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/fft-js/src/dft.js", module);
 (function(){
 /*===========================================================================*\
@@ -5402,7 +5498,7 @@ var dft = function(vector) {
 module.exports = dft;
 }).apply(this, arguments);
 
-},{"./complex":45,"./fftutil":48}],47:[function(require,module,exports){
+},{"./complex":46,"./fftutil":49}],48:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/fft-js/src/fft.js", module);
 (function(){
 /*===========================================================================*\
@@ -5511,7 +5607,7 @@ module.exports = {
 
 }).apply(this, arguments);
 
-},{"./complex":45,"./fftutil":48,"bit-twiddle":8}],48:[function(require,module,exports){
+},{"./complex":46,"./fftutil":49,"bit-twiddle":8}],49:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/fft-js/src/fftutil.js", module);
 (function(){
 /*===========================================================================*\
@@ -5584,7 +5680,7 @@ module.exports = {
 
 }).apply(this, arguments);
 
-},{"./complex":45}],49:[function(require,module,exports){
+},{"./complex":46}],50:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/form-data-set/element.js", module);
 (function(){
 var walk = require('dom-walk')
@@ -5617,7 +5713,7 @@ function getFormData(rootElem) {
 
 }).apply(this, arguments);
 
-},{"./index.js":50,"dom-walk":23}],50:[function(require,module,exports){
+},{"./index.js":51,"dom-walk":24}],51:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/form-data-set/index.js", module);
 (function(){
 /*jshint maxcomplexity: 10*/
@@ -5698,7 +5794,7 @@ function filterNull(val) {
 
 }).apply(this, arguments);
 
-},{}],51:[function(require,module,exports){
+},{}],52:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/geval/event.js", module);
 (function(){
 module.exports = Event
@@ -5730,7 +5826,7 @@ function Event() {
 
 }).apply(this, arguments);
 
-},{}],52:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/geval/multiple.js", module);
 (function(){
 var event = require("./single.js")
@@ -5746,7 +5842,7 @@ function multiple(names) {
 
 }).apply(this, arguments);
 
-},{"./single.js":53}],53:[function(require,module,exports){
+},{"./single.js":54}],54:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/geval/single.js", module);
 (function(){
 var Event = require('./event.js')
@@ -5767,7 +5863,7 @@ function Single() {
 
 }).apply(this, arguments);
 
-},{"./event.js":51}],54:[function(require,module,exports){
+},{"./event.js":52}],55:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/global/index.js", module);
 (function(){
 
@@ -5781,7 +5877,7 @@ module.exports = (function () { return this; })();
 
 }).apply(this, arguments);
 
-},{}],55:[function(require,module,exports){
+},{}],56:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/has-binary/index.js", module);
 (function(){
 (function (global){
@@ -5847,7 +5943,7 @@ function hasBinary(data) {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{"isarray":61}],56:[function(require,module,exports){
+},{"isarray":62}],57:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/has-cors/index.js", module);
 (function(){
 
@@ -5876,7 +5972,7 @@ try {
 
 }).apply(this, arguments);
 
-},{"global":54}],57:[function(require,module,exports){
+},{"global":55}],58:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/indexof/index.js", module);
 (function(){
 
@@ -5891,7 +5987,7 @@ module.exports = function(arr, obj){
 };
 }).apply(this, arguments);
 
-},{}],58:[function(require,module,exports){
+},{}],59:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/individual/index.js", module);
 (function(){
 (function (global){
@@ -5917,7 +6013,7 @@ function Individual(key, value) {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{}],59:[function(require,module,exports){
+},{}],60:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/inherits/inherits_browser.js", module);
 (function(){
 if (typeof Object.create === 'function') {
@@ -5946,7 +6042,7 @@ if (typeof Object.create === 'function') {
 
 }).apply(this, arguments);
 
-},{}],60:[function(require,module,exports){
+},{}],61:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/is-object/index.js", module);
 (function(){
 "use strict";
@@ -5957,7 +6053,7 @@ module.exports = function isObject(x) {
 
 }).apply(this, arguments);
 
-},{}],61:[function(require,module,exports){
+},{}],62:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/isarray/index.js", module);
 (function(){
 module.exports = Array.isArray || function (arr) {
@@ -5966,7 +6062,7 @@ module.exports = Array.isArray || function (arr) {
 
 }).apply(this, arguments);
 
-},{}],62:[function(require,module,exports){
+},{}],63:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/json3/lib/json3.js", module);
 (function(){
 /*! JSON v3.2.6 | http://bestiejs.github.io/json3 | Copyright 2012-2013, Kit Cambridge | http://kit.mit-license.org */
@@ -6833,7 +6929,7 @@ _hmr["websocket:null"].initModule("node_modules/json3/lib/json3.js", module);
 
 }).apply(this, arguments);
 
-},{}],63:[function(require,module,exports){
+},{}],64:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/kefir/dist/kefir.js", module);
 (function(){
 /*! Kefir.js v3.1.0
@@ -11484,7 +11580,7 @@ return /******/ (function(modules) { // webpackBootstrap
 ;
 }).apply(this, arguments);
 
-},{}],64:[function(require,module,exports){
+},{}],65:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/lodash/index.js", module);
 (function(){
 (function (global){
@@ -23843,7 +23939,72 @@ _hmr["websocket:null"].initModule("node_modules/lodash/index.js", module);
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{}],65:[function(require,module,exports){
+},{}],66:[function(require,module,exports){
+_hmr["websocket:null"].initModule("node_modules/log-scale/log_scale.js", module);
+(function(){
+/**
+ * Constructor
+ * @param {Number} minValue
+ * @param {Number} maxValue
+ */
+function LogScale(minValue, maxValue) {
+  this.minValue = minValue;
+  this.maxValue = maxValue;
+}
+
+/**
+ * Gets the range between the min and max values
+ * @returns {Number}
+ */
+LogScale.prototype.getRange = function() {
+  return this.maxValue - this.minValue;
+};
+
+/** 
+ * Maps linear 0-1 point to logarithmic scale between min and max
+ * f(0) = minValue
+ * f(1) = maxValue
+ * f(x) = (range + 1)^x + minValue
+ * @param linearValue {Number} from 0 to 1 in linear scale
+ * @returns {Number} between min and max inclusive
+ */
+LogScale.prototype.linearToLogarithmic = function(linearValue) {
+  var value = Math.round(Math.pow(this.getRange() + 1, linearValue) + this.minValue - 1); 
+
+  if (value < this.minValue) {
+    value = this.minValue;
+  } else if (value > this.maxValue) {
+    value = this.maxValue;
+  }   
+
+  return value;
+},  
+
+/** 
+ * Maps a logarithmic value to a fractional point between 0-1 on the scale
+ * g(minValue) = 0
+ * g(maxValue) = 1
+ * g(x) = log(base range + 1)(x)
+ * @param value {Number}
+ * @returns {Number} 0 to 1
+ */
+LogScale.prototype.logarithmicToLinear = function(value) {
+  var normalizedValue = value - this.minValue + 1;
+
+  if (normalizedValue <= 0) {
+    return 0;
+  } else if (value >= this.maxValue) {
+    return 1;
+  } else {
+    return Math.log(normalizedValue) / Math.log(this.getRange() + 1);
+  }   
+}
+
+module.exports = LogScale;
+
+}).apply(this, arguments);
+
+},{}],67:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/main-loop/index.js", module);
 (function(){
 var raf = require("raf")
@@ -23928,7 +24089,7 @@ function main(initialState, view, opts) {
 
 }).apply(this, arguments);
 
-},{"error/typed":40,"raf":114}],66:[function(require,module,exports){
+},{"error/typed":41,"raf":116}],68:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/index.js", module);
 (function(){
 'use strict';
@@ -24054,7 +24215,7 @@ function app(elem, observ, render, opts) {
 
 }).apply(this, arguments);
 
-},{"dom-delegator":19,"geval/multiple":52,"geval/single":53,"main-loop":65,"observ":107,"observ-array":96,"observ-struct":102,"observ-varhash":104,"observ/computed":106,"observ/watch":108,"value-event/base-event":130,"value-event/change":131,"value-event/click":132,"value-event/event":133,"value-event/key":134,"value-event/submit":137,"value-event/value":138,"vdom-thunk":140,"virtual-dom/vdom/create-element":69,"virtual-dom/vdom/patch":72,"virtual-dom/virtual-hyperscript":76,"virtual-dom/vtree/diff":89,"xtend":175}],67:[function(require,module,exports){
+},{"dom-delegator":20,"geval/multiple":53,"geval/single":54,"main-loop":67,"observ":109,"observ-array":98,"observ-struct":104,"observ-varhash":106,"observ/computed":108,"observ/watch":110,"value-event/base-event":132,"value-event/change":133,"value-event/click":134,"value-event/event":135,"value-event/key":136,"value-event/submit":139,"value-event/value":140,"vdom-thunk":142,"virtual-dom/vdom/create-element":71,"virtual-dom/vdom/patch":74,"virtual-dom/virtual-hyperscript":78,"virtual-dom/vtree/diff":91,"xtend":177}],69:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/global/document.js", module);
 (function(){
 (function (global){
@@ -24077,7 +24238,7 @@ if (typeof document !== 'undefined') {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{"min-document":10}],68:[function(require,module,exports){
+},{"min-document":10}],70:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vdom/apply-properties.js", module);
 (function(){
 var isObject = require("is-object")
@@ -24180,7 +24341,7 @@ function getPrototype(value) {
 
 }).apply(this, arguments);
 
-},{"../vnode/is-vhook.js":80,"is-object":60}],69:[function(require,module,exports){
+},{"../vnode/is-vhook.js":82,"is-object":61}],71:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js", module);
 (function(){
 var document = require("global/document")
@@ -24232,7 +24393,7 @@ function createElement(vnode, opts) {
 
 }).apply(this, arguments);
 
-},{"../vnode/handle-thunk.js":78,"../vnode/is-vnode.js":81,"../vnode/is-vtext.js":82,"../vnode/is-widget.js":83,"./apply-properties":68,"global/document":67}],70:[function(require,module,exports){
+},{"../vnode/handle-thunk.js":80,"../vnode/is-vnode.js":83,"../vnode/is-vtext.js":84,"../vnode/is-widget.js":85,"./apply-properties":70,"global/document":69}],72:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vdom/dom-index.js", module);
 (function(){
 // Maps a virtual DOM tree onto a real DOM tree in an efficient manner.
@@ -24323,7 +24484,7 @@ function ascending(a, b) {
 
 }).apply(this, arguments);
 
-},{}],71:[function(require,module,exports){
+},{}],73:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vdom/patch-op.js", module);
 (function(){
 var applyProperties = require("./apply-properties")
@@ -24512,7 +24673,7 @@ function replaceRoot(oldRoot, newRoot) {
 
 }).apply(this, arguments);
 
-},{"../vnode/is-widget.js":83,"../vnode/vpatch.js":86,"./apply-properties":68,"./create-element":69,"./update-widget":73}],72:[function(require,module,exports){
+},{"../vnode/is-widget.js":85,"../vnode/vpatch.js":88,"./apply-properties":70,"./create-element":71,"./update-widget":75}],74:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vdom/patch.js", module);
 (function(){
 var document = require("global/document")
@@ -24594,7 +24755,7 @@ function patchIndices(patches) {
 
 }).apply(this, arguments);
 
-},{"./dom-index":70,"./patch-op":71,"global/document":67,"x-is-array":174}],73:[function(require,module,exports){
+},{"./dom-index":72,"./patch-op":73,"global/document":69,"x-is-array":176}],75:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vdom/update-widget.js", module);
 (function(){
 var isWidget = require("../vnode/is-widget.js")
@@ -24615,7 +24776,7 @@ function updateWidget(a, b) {
 
 }).apply(this, arguments);
 
-},{"../vnode/is-widget.js":83}],74:[function(require,module,exports){
+},{"../vnode/is-widget.js":85}],76:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/hooks/ev-hook.js", module);
 (function(){
 'use strict';
@@ -24648,7 +24809,7 @@ EvHook.prototype.unhook = function(node, propertyName) {
 
 }).apply(this, arguments);
 
-},{"ev-store":41}],75:[function(require,module,exports){
+},{"ev-store":42}],77:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/hooks/soft-set-hook.js", module);
 (function(){
 'use strict';
@@ -24671,7 +24832,7 @@ SoftSetHook.prototype.hook = function (node, propertyName) {
 
 }).apply(this, arguments);
 
-},{}],76:[function(require,module,exports){
+},{}],78:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js", module);
 (function(){
 'use strict';
@@ -24812,7 +24973,7 @@ function errorString(obj) {
 
 }).apply(this, arguments);
 
-},{"../vnode/is-thunk":79,"../vnode/is-vhook":80,"../vnode/is-vnode":81,"../vnode/is-vtext":82,"../vnode/is-widget":83,"../vnode/vnode.js":85,"../vnode/vtext.js":87,"./hooks/ev-hook.js":74,"./hooks/soft-set-hook.js":75,"./parse-tag.js":77,"x-is-array":174}],77:[function(require,module,exports){
+},{"../vnode/is-thunk":81,"../vnode/is-vhook":82,"../vnode/is-vnode":83,"../vnode/is-vtext":84,"../vnode/is-widget":85,"../vnode/vnode.js":87,"../vnode/vtext.js":89,"./hooks/ev-hook.js":76,"./hooks/soft-set-hook.js":77,"./parse-tag.js":79,"x-is-array":176}],79:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/parse-tag.js", module);
 (function(){
 'use strict';
@@ -24872,7 +25033,7 @@ function parseTag(tag, props) {
 
 }).apply(this, arguments);
 
-},{"browser-split":11}],78:[function(require,module,exports){
+},{"browser-split":11}],80:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vnode/handle-thunk.js", module);
 (function(){
 var isVNode = require("./is-vnode")
@@ -24918,7 +25079,7 @@ function renderThunk(thunk, previous) {
 
 }).apply(this, arguments);
 
-},{"./is-thunk":79,"./is-vnode":81,"./is-vtext":82,"./is-widget":83}],79:[function(require,module,exports){
+},{"./is-thunk":81,"./is-vnode":83,"./is-vtext":84,"./is-widget":85}],81:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vnode/is-thunk.js", module);
 (function(){
 module.exports = isThunk
@@ -24929,7 +25090,7 @@ function isThunk(t) {
 
 }).apply(this, arguments);
 
-},{}],80:[function(require,module,exports){
+},{}],82:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vnode/is-vhook.js", module);
 (function(){
 module.exports = isHook
@@ -24942,7 +25103,7 @@ function isHook(hook) {
 
 }).apply(this, arguments);
 
-},{}],81:[function(require,module,exports){
+},{}],83:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vnode/is-vnode.js", module);
 (function(){
 var version = require("./version")
@@ -24955,7 +25116,7 @@ function isVirtualNode(x) {
 
 }).apply(this, arguments);
 
-},{"./version":84}],82:[function(require,module,exports){
+},{"./version":86}],84:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vnode/is-vtext.js", module);
 (function(){
 var version = require("./version")
@@ -24968,7 +25129,7 @@ function isVirtualText(x) {
 
 }).apply(this, arguments);
 
-},{"./version":84}],83:[function(require,module,exports){
+},{"./version":86}],85:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vnode/is-widget.js", module);
 (function(){
 module.exports = isWidget
@@ -24979,14 +25140,14 @@ function isWidget(w) {
 
 }).apply(this, arguments);
 
-},{}],84:[function(require,module,exports){
+},{}],86:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vnode/version.js", module);
 (function(){
 module.exports = "1"
 
 }).apply(this, arguments);
 
-},{}],85:[function(require,module,exports){
+},{}],87:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vnode/vnode.js", module);
 (function(){
 var version = require("./version")
@@ -25064,7 +25225,7 @@ VirtualNode.prototype.type = "VirtualNode"
 
 }).apply(this, arguments);
 
-},{"./is-thunk":79,"./is-vhook":80,"./is-vnode":81,"./is-widget":83,"./version":84}],86:[function(require,module,exports){
+},{"./is-thunk":81,"./is-vhook":82,"./is-vnode":83,"./is-widget":85,"./version":86}],88:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vnode/vpatch.js", module);
 (function(){
 var version = require("./version")
@@ -25092,7 +25253,7 @@ VirtualPatch.prototype.type = "VirtualPatch"
 
 }).apply(this, arguments);
 
-},{"./version":84}],87:[function(require,module,exports){
+},{"./version":86}],89:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vnode/vtext.js", module);
 (function(){
 var version = require("./version")
@@ -25108,7 +25269,7 @@ VirtualText.prototype.type = "VirtualText"
 
 }).apply(this, arguments);
 
-},{"./version":84}],88:[function(require,module,exports){
+},{"./version":86}],90:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vtree/diff-props.js", module);
 (function(){
 var isObject = require("is-object")
@@ -25172,7 +25333,7 @@ function getPrototype(value) {
 
 }).apply(this, arguments);
 
-},{"../vnode/is-vhook":80,"is-object":60}],89:[function(require,module,exports){
+},{"../vnode/is-vhook":82,"is-object":61}],91:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/mercury/node_modules/virtual-dom/vtree/diff.js", module);
 (function(){
 var isArray = require("x-is-array")
@@ -25501,7 +25662,7 @@ function appendPatch(apply, patch) {
 
 }).apply(this, arguments);
 
-},{"../vnode/handle-thunk":78,"../vnode/is-thunk":79,"../vnode/is-vnode":81,"../vnode/is-vtext":82,"../vnode/is-widget":83,"../vnode/vpatch":86,"./diff-props":88,"x-is-array":174}],90:[function(require,module,exports){
+},{"../vnode/handle-thunk":80,"../vnode/is-thunk":81,"../vnode/is-vnode":83,"../vnode/is-vtext":84,"../vnode/is-widget":85,"../vnode/vpatch":88,"./diff-props":90,"x-is-array":176}],92:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/object-component/index.js", module);
 (function(){
 
@@ -25590,7 +25751,7 @@ exports.isEmpty = function(obj){
 };
 }).apply(this, arguments);
 
-},{}],91:[function(require,module,exports){
+},{}],93:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-array/add-listener.js", module);
 (function(){
 var setNonEnumerable = require("./lib/set-non-enumerable.js");
@@ -25624,7 +25785,7 @@ function addListener(observArray, observ) {
 
 }).apply(this, arguments);
 
-},{"./lib/set-non-enumerable.js":97}],92:[function(require,module,exports){
+},{"./lib/set-non-enumerable.js":99}],94:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-array/apply-patch.js", module);
 (function(){
 var addListener = require('./add-listener.js')
@@ -25666,7 +25827,7 @@ function unpack(value, index){
 
 }).apply(this, arguments);
 
-},{"./add-listener.js":91}],93:[function(require,module,exports){
+},{"./add-listener.js":93}],95:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-array/array-methods.js", module);
 (function(){
 var ObservArray = require("./index.js")
@@ -25737,7 +25898,7 @@ function notImplemented() {
 
 }).apply(this, arguments);
 
-},{"./array-reverse.js":94,"./array-sort.js":95,"./index.js":96}],94:[function(require,module,exports){
+},{"./array-reverse.js":96,"./array-sort.js":97,"./index.js":98}],96:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-array/array-reverse.js", module);
 (function(){
 var applyPatch = require("./apply-patch.js")
@@ -25776,7 +25937,7 @@ function fakeDiff(arr) {
 
 }).apply(this, arguments);
 
-},{"./apply-patch.js":92,"./lib/set-non-enumerable.js":97}],95:[function(require,module,exports){
+},{"./apply-patch.js":94,"./lib/set-non-enumerable.js":99}],97:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-array/array-sort.js", module);
 (function(){
 var applyPatch = require("./apply-patch.js")
@@ -25841,7 +26002,7 @@ function indexOf(n, h) {
 
 }).apply(this, arguments);
 
-},{"./apply-patch.js":92,"./lib/set-non-enumerable.js":97}],96:[function(require,module,exports){
+},{"./apply-patch.js":94,"./lib/set-non-enumerable.js":99}],98:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-array/index.js", module);
 (function(){
 var Observ = require("observ")
@@ -25932,7 +26093,7 @@ function getLength() {
 
 }).apply(this, arguments);
 
-},{"./add-listener.js":91,"./array-methods.js":93,"./put.js":98,"./set.js":99,"./splice.js":100,"./transaction.js":101,"observ":107}],97:[function(require,module,exports){
+},{"./add-listener.js":93,"./array-methods.js":95,"./put.js":100,"./set.js":101,"./splice.js":102,"./transaction.js":103,"observ":109}],99:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-array/lib/set-non-enumerable.js", module);
 (function(){
 module.exports = setNonEnumerable;
@@ -25948,7 +26109,7 @@ function setNonEnumerable(object, key, value) {
 
 }).apply(this, arguments);
 
-},{}],98:[function(require,module,exports){
+},{}],100:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-array/put.js", module);
 (function(){
 var addListener = require("./add-listener.js")
@@ -25991,7 +26152,7 @@ function put(index, value) {
 }
 }).apply(this, arguments);
 
-},{"./add-listener.js":91,"./lib/set-non-enumerable.js":97}],99:[function(require,module,exports){
+},{"./add-listener.js":93,"./lib/set-non-enumerable.js":99}],101:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-array/set.js", module);
 (function(){
 var applyPatch = require("./apply-patch.js")
@@ -26017,7 +26178,7 @@ function set(rawList) {
 
 }).apply(this, arguments);
 
-},{"./apply-patch.js":92,"./lib/set-non-enumerable.js":97,"adiff":3}],100:[function(require,module,exports){
+},{"./apply-patch.js":94,"./lib/set-non-enumerable.js":99,"adiff":3}],102:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-array/splice.js", module);
 (function(){
 var slice = Array.prototype.slice
@@ -26073,7 +26234,7 @@ function splice(index, amount) {
 
 }).apply(this, arguments);
 
-},{"./add-listener.js":91,"./lib/set-non-enumerable.js":97}],101:[function(require,module,exports){
+},{"./add-listener.js":93,"./lib/set-non-enumerable.js":99}],103:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-array/transaction.js", module);
 (function(){
 module.exports = transaction
@@ -26089,7 +26250,7 @@ function transaction (func) {
 }
 }).apply(this, arguments);
 
-},{}],102:[function(require,module,exports){
+},{}],104:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-struct/index.js", module);
 (function(){
 var Observ = require("observ")
@@ -26203,7 +26364,7 @@ function ObservStruct(struct) {
 
 }).apply(this, arguments);
 
-},{"observ":107,"xtend":103}],103:[function(require,module,exports){
+},{"observ":109,"xtend":105}],105:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-struct/node_modules/xtend/index.js", module);
 (function(){
 module.exports = extend
@@ -26226,7 +26387,7 @@ function extend() {
 
 }).apply(this, arguments);
 
-},{}],104:[function(require,module,exports){
+},{}],106:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-varhash/index.js", module);
 (function(){
 var Observ = require('observ')
@@ -26384,7 +26545,7 @@ function checkKey (key) {
 
 }).apply(this, arguments);
 
-},{"observ":107,"xtend":105}],105:[function(require,module,exports){
+},{"observ":109,"xtend":107}],107:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ-varhash/node_modules/xtend/index.js", module);
 (function(){
 module.exports = extend
@@ -26407,7 +26568,7 @@ function extend() {
 
 }).apply(this, arguments);
 
-},{}],106:[function(require,module,exports){
+},{}],108:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ/computed.js", module);
 (function(){
 var Observable = require("./index.js")
@@ -26432,7 +26593,7 @@ function computed(observables, lambda) {
 
 }).apply(this, arguments);
 
-},{"./index.js":107}],107:[function(require,module,exports){
+},{"./index.js":109}],109:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ/index.js", module);
 (function(){
 module.exports = Observable
@@ -26465,7 +26626,7 @@ function Observable(value) {
 
 }).apply(this, arguments);
 
-},{}],108:[function(require,module,exports){
+},{}],110:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/observ/watch.js", module);
 (function(){
 module.exports = watch
@@ -26478,7 +26639,7 @@ function watch(observable, listener) {
 
 }).apply(this, arguments);
 
-},{}],109:[function(require,module,exports){
+},{}],111:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/parsejson/index.js", module);
 (function(){
 (function (global){
@@ -26517,7 +26678,7 @@ module.exports = function parsejson(data) {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{}],110:[function(require,module,exports){
+},{}],112:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/parseqs/index.js", module);
 (function(){
 /**
@@ -26560,7 +26721,7 @@ exports.decode = function(qs){
 
 }).apply(this, arguments);
 
-},{}],111:[function(require,module,exports){
+},{}],113:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/parseuri/index.js", module);
 (function(){
 /**
@@ -26591,7 +26752,7 @@ module.exports = function parseuri(str) {
 
 }).apply(this, arguments);
 
-},{}],112:[function(require,module,exports){
+},{}],114:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/performance-now/lib/performance-now.js", module);
 (function(){
 (function (process){
@@ -26635,7 +26796,7 @@ _hmr["websocket:null"].initModule("node_modules/performance-now/lib/performance-
 }).call(this,require('_process'))
 }).apply(this, arguments);
 
-},{"_process":113}],113:[function(require,module,exports){
+},{"_process":115}],115:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/process/browser.js", module);
 (function(){
 // shim for using process in browser
@@ -26732,7 +26893,7 @@ process.umask = function() { return 0; };
 
 }).apply(this, arguments);
 
-},{}],114:[function(require,module,exports){
+},{}],116:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/raf/index.js", module);
 (function(){
 var now = require('performance-now')
@@ -26818,7 +26979,7 @@ module.exports.cancel = function() {
 
 }).apply(this, arguments);
 
-},{"performance-now":112}],115:[function(require,module,exports){
+},{"performance-now":114}],117:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/simple-linear-scale/index.js", module);
 (function(){
 /**
@@ -26851,7 +27012,7 @@ module.exports = linearScale;
 
 }).apply(this, arguments);
 
-},{}],116:[function(require,module,exports){
+},{}],118:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/socket.io-client/index.js", module);
 (function(){
 
@@ -26859,7 +27020,7 @@ module.exports = require('./lib/');
 
 }).apply(this, arguments);
 
-},{"./lib/":117}],117:[function(require,module,exports){
+},{"./lib/":119}],119:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/socket.io-client/lib/index.js", module);
 (function(){
 
@@ -26952,7 +27113,7 @@ exports.Socket = require('./socket');
 
 }).apply(this, arguments);
 
-},{"./manager":118,"./socket":120,"./url":121,"debug":122,"socket.io-parser":124}],118:[function(require,module,exports){
+},{"./manager":120,"./socket":122,"./url":123,"debug":124,"socket.io-parser":126}],120:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/socket.io-client/lib/manager.js", module);
 (function(){
 
@@ -27461,7 +27622,7 @@ Manager.prototype.onreconnect = function(){
 
 }).apply(this, arguments);
 
-},{"./on":119,"./socket":120,"./url":121,"backo2":6,"component-bind":13,"component-emitter":14,"debug":122,"engine.io-client":24,"indexof":57,"object-component":90,"socket.io-parser":124}],119:[function(require,module,exports){
+},{"./on":121,"./socket":122,"./url":123,"backo2":6,"component-bind":14,"component-emitter":15,"debug":124,"engine.io-client":25,"indexof":58,"object-component":92,"socket.io-parser":126}],121:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/socket.io-client/lib/on.js", module);
 (function(){
 
@@ -27491,7 +27652,7 @@ function on(obj, ev, fn) {
 
 }).apply(this, arguments);
 
-},{}],120:[function(require,module,exports){
+},{}],122:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/socket.io-client/lib/socket.js", module);
 (function(){
 
@@ -27882,7 +28043,7 @@ Socket.prototype.disconnect = function(){
 
 }).apply(this, arguments);
 
-},{"./on":119,"component-bind":13,"component-emitter":14,"debug":122,"has-binary":55,"socket.io-parser":124,"to-array":128}],121:[function(require,module,exports){
+},{"./on":121,"component-bind":14,"component-emitter":15,"debug":124,"has-binary":56,"socket.io-parser":126,"to-array":130}],123:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/socket.io-client/lib/url.js", module);
 (function(){
 (function (global){
@@ -27963,7 +28124,7 @@ function url(uri, loc){
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{"debug":122,"parseuri":111}],122:[function(require,module,exports){
+},{"debug":124,"parseuri":113}],124:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/socket.io-client/node_modules/debug/debug.js", module);
 (function(){
 
@@ -28106,7 +28267,7 @@ try {
 
 }).apply(this, arguments);
 
-},{}],123:[function(require,module,exports){
+},{}],125:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/socket.io-parser/binary.js", module);
 (function(){
 (function (global){
@@ -28255,7 +28416,7 @@ exports.removeBlobs = function(data, callback) {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{"./is-buffer":125,"isarray":61}],124:[function(require,module,exports){
+},{"./is-buffer":127,"isarray":62}],126:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/socket.io-parser/index.js", module);
 (function(){
 
@@ -28661,7 +28822,7 @@ function error(data){
 
 }).apply(this, arguments);
 
-},{"./binary":123,"./is-buffer":125,"component-emitter":14,"debug":126,"isarray":61,"json3":62}],125:[function(require,module,exports){
+},{"./binary":125,"./is-buffer":127,"component-emitter":15,"debug":128,"isarray":62,"json3":63}],127:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/socket.io-parser/is-buffer.js", module);
 (function(){
 (function (global){
@@ -28682,7 +28843,7 @@ function isBuf(obj) {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{}],126:[function(require,module,exports){
+},{}],128:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/socket.io-parser/node_modules/debug/debug.js", module);
 (function(){
 
@@ -28825,7 +28986,7 @@ try {
 
 }).apply(this, arguments);
 
-},{}],127:[function(require,module,exports){
+},{}],129:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/string-template/index.js", module);
 (function(){
 var nargs = /\{([0-9a-zA-Z]+)\}/g
@@ -28865,7 +29026,7 @@ function template(string) {
 
 }).apply(this, arguments);
 
-},{}],128:[function(require,module,exports){
+},{}],130:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/to-array/index.js", module);
 (function(){
 module.exports = toArray
@@ -28884,7 +29045,7 @@ function toArray(list, index) {
 
 }).apply(this, arguments);
 
-},{}],129:[function(require,module,exports){
+},{}],131:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/utf8/utf8.js", module);
 (function(){
 (function (global){
@@ -29136,7 +29297,7 @@ _hmr["websocket:null"].initModule("node_modules/utf8/utf8.js", module);
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{}],130:[function(require,module,exports){
+},{}],132:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/value-event/base-event.js", module);
 (function(){
 var Delegator = require('dom-delegator')
@@ -29191,7 +29352,7 @@ function BaseEvent(lambda) {
 
 }).apply(this, arguments);
 
-},{"dom-delegator":19}],131:[function(require,module,exports){
+},{"dom-delegator":20}],133:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/value-event/change.js", module);
 (function(){
 var extend = require('xtend')
@@ -29228,7 +29389,7 @@ function changeLambda(ev, broadcast) {
 
 }).apply(this, arguments);
 
-},{"./base-event.js":130,"form-data-set/element":49,"xtend":136}],132:[function(require,module,exports){
+},{"./base-event.js":132,"form-data-set/element":50,"xtend":138}],134:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/value-event/click.js", module);
 (function(){
 var BaseEvent = require('./base-event.js');
@@ -29259,7 +29420,7 @@ function clickLambda(ev, broadcast) {
 
 }).apply(this, arguments);
 
-},{"./base-event.js":130}],133:[function(require,module,exports){
+},{"./base-event.js":132}],135:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/value-event/event.js", module);
 (function(){
 var BaseEvent = require('./base-event.js');
@@ -29272,7 +29433,7 @@ function eventLambda(ev, broadcast) {
 
 }).apply(this, arguments);
 
-},{"./base-event.js":130}],134:[function(require,module,exports){
+},{"./base-event.js":132}],136:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/value-event/key.js", module);
 (function(){
 var BaseEvent = require('./base-event.js');
@@ -29289,7 +29450,7 @@ function keyLambda(ev, broadcast) {
 
 }).apply(this, arguments);
 
-},{"./base-event.js":130}],135:[function(require,module,exports){
+},{"./base-event.js":132}],137:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/value-event/node_modules/xtend/has-keys.js", module);
 (function(){
 module.exports = hasKeys
@@ -29302,7 +29463,7 @@ function hasKeys(source) {
 
 }).apply(this, arguments);
 
-},{}],136:[function(require,module,exports){
+},{}],138:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/value-event/node_modules/xtend/index.js", module);
 (function(){
 var hasKeys = require("./has-keys")
@@ -29331,7 +29492,7 @@ function extend() {
 
 }).apply(this, arguments);
 
-},{"./has-keys":135}],137:[function(require,module,exports){
+},{"./has-keys":137}],139:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/value-event/submit.js", module);
 (function(){
 var extend = require('xtend')
@@ -29374,7 +29535,7 @@ function submitLambda(ev, broadcast) {
 
 }).apply(this, arguments);
 
-},{"./base-event.js":130,"form-data-set/element":49,"xtend":136}],138:[function(require,module,exports){
+},{"./base-event.js":132,"form-data-set/element":50,"xtend":138}],140:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/value-event/value.js", module);
 (function(){
 var extend = require('xtend')
@@ -29393,7 +29554,7 @@ function valueLambda(ev, broadcast) {
 
 }).apply(this, arguments);
 
-},{"./base-event.js":130,"form-data-set/element":49,"xtend":136}],139:[function(require,module,exports){
+},{"./base-event.js":132,"form-data-set/element":50,"xtend":138}],141:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/vdom-thunk/immutable-thunk.js", module);
 (function(){
 function Thunk(fn, args, key, eqArgs) {
@@ -29428,7 +29589,7 @@ function render(previous) {
 
 }).apply(this, arguments);
 
-},{}],140:[function(require,module,exports){
+},{}],142:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/vdom-thunk/index.js", module);
 (function(){
 var Partial = require('./partial');
@@ -29437,7 +29598,7 @@ module.exports = Partial();
 
 }).apply(this, arguments);
 
-},{"./partial":141}],141:[function(require,module,exports){
+},{"./partial":143}],143:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/vdom-thunk/partial.js", module);
 (function(){
 var shallowEq = require('./shallow-eq');
@@ -29475,7 +29636,7 @@ function copyOver(list, offset) {
 
 }).apply(this, arguments);
 
-},{"./immutable-thunk":139,"./shallow-eq":142}],142:[function(require,module,exports){
+},{"./immutable-thunk":141,"./shallow-eq":144}],144:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/vdom-thunk/shallow-eq.js", module);
 (function(){
 module.exports = shallowEq;
@@ -29502,7 +29663,7 @@ function shallowEq(currentArgs, previousArgs) {
 
 }).apply(this, arguments);
 
-},{}],143:[function(require,module,exports){
+},{}],145:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/create-element.js", module);
 (function(){
 var createElement = require("./vdom/create-element.js")
@@ -29511,7 +29672,7 @@ module.exports = createElement
 
 }).apply(this, arguments);
 
-},{"./vdom/create-element.js":150}],144:[function(require,module,exports){
+},{"./vdom/create-element.js":152}],146:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/diff.js", module);
 (function(){
 var diff = require("./vtree/diff.js")
@@ -29520,7 +29681,7 @@ module.exports = diff
 
 }).apply(this, arguments);
 
-},{"./vtree/diff.js":170}],145:[function(require,module,exports){
+},{"./vtree/diff.js":172}],147:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/h.js", module);
 (function(){
 var h = require("./virtual-hyperscript/index.js")
@@ -29529,7 +29690,7 @@ module.exports = h
 
 }).apply(this, arguments);
 
-},{"./virtual-hyperscript/index.js":157}],146:[function(require,module,exports){
+},{"./virtual-hyperscript/index.js":159}],148:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/index.js", module);
 (function(){
 var diff = require("./diff.js")
@@ -29550,7 +29711,7 @@ module.exports = {
 
 }).apply(this, arguments);
 
-},{"./create-element.js":143,"./diff.js":144,"./h.js":145,"./patch.js":148,"./vnode/vnode.js":166,"./vnode/vtext.js":168}],147:[function(require,module,exports){
+},{"./create-element.js":145,"./diff.js":146,"./h.js":147,"./patch.js":150,"./vnode/vnode.js":168,"./vnode/vtext.js":170}],149:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/node_modules/global/document.js", module);
 (function(){
 (function (global){
@@ -29573,7 +29734,7 @@ if (typeof document !== 'undefined') {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 }).apply(this, arguments);
 
-},{"min-document":10}],148:[function(require,module,exports){
+},{"min-document":10}],150:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/patch.js", module);
 (function(){
 var patch = require("./vdom/patch.js")
@@ -29582,7 +29743,7 @@ module.exports = patch
 
 }).apply(this, arguments);
 
-},{"./vdom/patch.js":153}],149:[function(require,module,exports){
+},{"./vdom/patch.js":155}],151:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vdom/apply-properties.js", module);
 (function(){
 var isObject = require("is-object")
@@ -29685,7 +29846,7 @@ function getPrototype(value) {
 
 }).apply(this, arguments);
 
-},{"../vnode/is-vhook.js":161,"is-object":60}],150:[function(require,module,exports){
+},{"../vnode/is-vhook.js":163,"is-object":61}],152:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vdom/create-element.js", module);
 (function(){
 var document = require("global/document")
@@ -29737,7 +29898,7 @@ function createElement(vnode, opts) {
 
 }).apply(this, arguments);
 
-},{"../vnode/handle-thunk.js":159,"../vnode/is-vnode.js":162,"../vnode/is-vtext.js":163,"../vnode/is-widget.js":164,"./apply-properties":149,"global/document":147}],151:[function(require,module,exports){
+},{"../vnode/handle-thunk.js":161,"../vnode/is-vnode.js":164,"../vnode/is-vtext.js":165,"../vnode/is-widget.js":166,"./apply-properties":151,"global/document":149}],153:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vdom/dom-index.js", module);
 (function(){
 // Maps a virtual DOM tree onto a real DOM tree in an efficient manner.
@@ -29828,7 +29989,7 @@ function ascending(a, b) {
 
 }).apply(this, arguments);
 
-},{}],152:[function(require,module,exports){
+},{}],154:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vdom/patch-op.js", module);
 (function(){
 var applyProperties = require("./apply-properties")
@@ -29985,7 +30146,7 @@ function replaceRoot(oldRoot, newRoot) {
 
 }).apply(this, arguments);
 
-},{"../vnode/is-widget.js":164,"../vnode/vpatch.js":167,"./apply-properties":149,"./update-widget":154}],153:[function(require,module,exports){
+},{"../vnode/is-widget.js":166,"../vnode/vpatch.js":169,"./apply-properties":151,"./update-widget":156}],155:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vdom/patch.js", module);
 (function(){
 var document = require("global/document")
@@ -30071,7 +30232,7 @@ function patchIndices(patches) {
 
 }).apply(this, arguments);
 
-},{"./create-element":150,"./dom-index":151,"./patch-op":152,"global/document":147,"x-is-array":174}],154:[function(require,module,exports){
+},{"./create-element":152,"./dom-index":153,"./patch-op":154,"global/document":149,"x-is-array":176}],156:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vdom/update-widget.js", module);
 (function(){
 var isWidget = require("../vnode/is-widget.js")
@@ -30092,7 +30253,7 @@ function updateWidget(a, b) {
 
 }).apply(this, arguments);
 
-},{"../vnode/is-widget.js":164}],155:[function(require,module,exports){
+},{"../vnode/is-widget.js":166}],157:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/virtual-hyperscript/hooks/ev-hook.js", module);
 (function(){
 'use strict';
@@ -30125,7 +30286,7 @@ EvHook.prototype.unhook = function(node, propertyName) {
 
 }).apply(this, arguments);
 
-},{"ev-store":41}],156:[function(require,module,exports){
+},{"ev-store":42}],158:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/virtual-hyperscript/hooks/soft-set-hook.js", module);
 (function(){
 'use strict';
@@ -30148,7 +30309,7 @@ SoftSetHook.prototype.hook = function (node, propertyName) {
 
 }).apply(this, arguments);
 
-},{}],157:[function(require,module,exports){
+},{}],159:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/virtual-hyperscript/index.js", module);
 (function(){
 'use strict';
@@ -30291,7 +30452,7 @@ function errorString(obj) {
 
 }).apply(this, arguments);
 
-},{"../vnode/is-thunk":160,"../vnode/is-vhook":161,"../vnode/is-vnode":162,"../vnode/is-vtext":163,"../vnode/is-widget":164,"../vnode/vnode.js":166,"../vnode/vtext.js":168,"./hooks/ev-hook.js":155,"./hooks/soft-set-hook.js":156,"./parse-tag.js":158,"x-is-array":174}],158:[function(require,module,exports){
+},{"../vnode/is-thunk":162,"../vnode/is-vhook":163,"../vnode/is-vnode":164,"../vnode/is-vtext":165,"../vnode/is-widget":166,"../vnode/vnode.js":168,"../vnode/vtext.js":170,"./hooks/ev-hook.js":157,"./hooks/soft-set-hook.js":158,"./parse-tag.js":160,"x-is-array":176}],160:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/virtual-hyperscript/parse-tag.js", module);
 (function(){
 'use strict';
@@ -30351,7 +30512,7 @@ function parseTag(tag, props) {
 
 }).apply(this, arguments);
 
-},{"browser-split":11}],159:[function(require,module,exports){
+},{"browser-split":11}],161:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vnode/handle-thunk.js", module);
 (function(){
 var isVNode = require("./is-vnode")
@@ -30397,7 +30558,7 @@ function renderThunk(thunk, previous) {
 
 }).apply(this, arguments);
 
-},{"./is-thunk":160,"./is-vnode":162,"./is-vtext":163,"./is-widget":164}],160:[function(require,module,exports){
+},{"./is-thunk":162,"./is-vnode":164,"./is-vtext":165,"./is-widget":166}],162:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vnode/is-thunk.js", module);
 (function(){
 module.exports = isThunk
@@ -30408,7 +30569,7 @@ function isThunk(t) {
 
 }).apply(this, arguments);
 
-},{}],161:[function(require,module,exports){
+},{}],163:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vnode/is-vhook.js", module);
 (function(){
 module.exports = isHook
@@ -30421,7 +30582,7 @@ function isHook(hook) {
 
 }).apply(this, arguments);
 
-},{}],162:[function(require,module,exports){
+},{}],164:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vnode/is-vnode.js", module);
 (function(){
 var version = require("./version")
@@ -30434,7 +30595,7 @@ function isVirtualNode(x) {
 
 }).apply(this, arguments);
 
-},{"./version":165}],163:[function(require,module,exports){
+},{"./version":167}],165:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vnode/is-vtext.js", module);
 (function(){
 var version = require("./version")
@@ -30447,7 +30608,7 @@ function isVirtualText(x) {
 
 }).apply(this, arguments);
 
-},{"./version":165}],164:[function(require,module,exports){
+},{"./version":167}],166:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vnode/is-widget.js", module);
 (function(){
 module.exports = isWidget
@@ -30458,14 +30619,14 @@ function isWidget(w) {
 
 }).apply(this, arguments);
 
-},{}],165:[function(require,module,exports){
+},{}],167:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vnode/version.js", module);
 (function(){
 module.exports = "2"
 
 }).apply(this, arguments);
 
-},{}],166:[function(require,module,exports){
+},{}],168:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vnode/vnode.js", module);
 (function(){
 var version = require("./version")
@@ -30543,7 +30704,7 @@ VirtualNode.prototype.type = "VirtualNode"
 
 }).apply(this, arguments);
 
-},{"./is-thunk":160,"./is-vhook":161,"./is-vnode":162,"./is-widget":164,"./version":165}],167:[function(require,module,exports){
+},{"./is-thunk":162,"./is-vhook":163,"./is-vnode":164,"./is-widget":166,"./version":167}],169:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vnode/vpatch.js", module);
 (function(){
 var version = require("./version")
@@ -30571,7 +30732,7 @@ VirtualPatch.prototype.type = "VirtualPatch"
 
 }).apply(this, arguments);
 
-},{"./version":165}],168:[function(require,module,exports){
+},{"./version":167}],170:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vnode/vtext.js", module);
 (function(){
 var version = require("./version")
@@ -30587,7 +30748,7 @@ VirtualText.prototype.type = "VirtualText"
 
 }).apply(this, arguments);
 
-},{"./version":165}],169:[function(require,module,exports){
+},{"./version":167}],171:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vtree/diff-props.js", module);
 (function(){
 var isObject = require("is-object")
@@ -30651,7 +30812,7 @@ function getPrototype(value) {
 
 }).apply(this, arguments);
 
-},{"../vnode/is-vhook":161,"is-object":60}],170:[function(require,module,exports){
+},{"../vnode/is-vhook":163,"is-object":61}],172:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/virtual-dom/vtree/diff.js", module);
 (function(){
 var isArray = require("x-is-array")
@@ -31084,7 +31245,7 @@ function appendPatch(apply, patch) {
 
 }).apply(this, arguments);
 
-},{"../vnode/handle-thunk":159,"../vnode/is-thunk":160,"../vnode/is-vnode":162,"../vnode/is-vtext":163,"../vnode/is-widget":164,"../vnode/vpatch":167,"./diff-props":169,"x-is-array":174}],171:[function(require,module,exports){
+},{"../vnode/handle-thunk":161,"../vnode/is-thunk":162,"../vnode/is-vnode":164,"../vnode/is-vtext":165,"../vnode/is-widget":166,"../vnode/vpatch":169,"./diff-props":171,"x-is-array":176}],173:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/weakmap-shim/create-store.js", module);
 (function(){
 var hiddenStore = require('./hidden-store.js');
@@ -31109,7 +31270,7 @@ function createStore() {
 
 }).apply(this, arguments);
 
-},{"./hidden-store.js":172}],172:[function(require,module,exports){
+},{"./hidden-store.js":174}],174:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/weakmap-shim/hidden-store.js", module);
 (function(){
 module.exports = hiddenStore;
@@ -31131,7 +31292,7 @@ function hiddenStore(obj, key) {
 
 }).apply(this, arguments);
 
-},{}],173:[function(require,module,exports){
+},{}],175:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/ws/lib/browser.js", module);
 (function(){
 
@@ -31180,7 +31341,7 @@ if (WebSocket) ws.prototype = WebSocket.prototype;
 
 }).apply(this, arguments);
 
-},{}],174:[function(require,module,exports){
+},{}],176:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/x-is-array/index.js", module);
 (function(){
 var nativeIsArray = Array.isArray
@@ -31194,7 +31355,7 @@ function isArray(obj) {
 
 }).apply(this, arguments);
 
-},{}],175:[function(require,module,exports){
+},{}],177:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/xtend/immutable.js", module);
 (function(){
 module.exports = extend
@@ -31217,7 +31378,7 @@ function extend() {
 
 }).apply(this, arguments);
 
-},{}],176:[function(require,module,exports){
+},{}],178:[function(require,module,exports){
 _hmr["websocket:null"].initModule("node_modules/xtend/mutable.js", module);
 (function(){
 module.exports = extend
@@ -31238,27 +31399,83 @@ function extend(target) {
 
 }).apply(this, arguments);
 
-},{}],177:[function(require,module,exports){
+},{}],179:[function(require,module,exports){
+_hmr["websocket:null"].initModule("patches/Bandpass.js", module);
+(function(){
+var _ = require('lodash')
+
+var bands = [
+  {
+    name: 'delta'
+  , min: 0
+  , max: 4
+  }
+  , {
+    name: 'theta'
+  , min: 4
+  , max: 7
+  }
+  , {
+    name: 'alpha'
+  , min: 8
+  , max: 15
+  }
+  , {
+    name: 'beta'
+  , min: 16
+  , max: 31 
+  }
+  , {
+    name: 'gamma'
+  , min: 32 
+  , max: 256
+  }
+]
+
+module.exports = function (bandName) {
+  var band = _.first(_.filter(bands, 'name', bandName))
+  return function (list) {
+    return _.slice(list, band.min, band.max)
+  }
+}
+}).apply(this, arguments);
+
+},{"lodash":65}],180:[function(require,module,exports){
 _hmr["websocket:null"].initModule("render.js", module);
 (function(){
 'use strict';
 var fftjs = require('fft-js')
   , fft = fftjs.fft
-  , magnitudes = function (raws) { return fftjs.util.fftMag(fft(raws)) }
+  , fftMag = fftjs.util.fftMag
+  , magnitudes = function (vs) { return fftMag(fft(vs)) }
 
+// patches
+//var Averager = require('./patches/Averager.js')
+var Bandpass = require('./patches/Bandpass.js')
+
+// views
 var NumberView = require('./views/Number.js')
+var BarGraph = require('./views/BarGraph.js')
 var Spectrogram = require('./views/Spectrogram.js')
 
 module.exports = function render (stream, draw) {
+
   var buffers = stream.map(function (b) { return b.rawBuffer })
   var ffts = buffers.map(magnitudes)
 
-  draw(ffts, Spectrogram, 'FFT')
+  var a = ffts.map(Bandpass('alpha'))
+  var b = ffts.map(Bandpass('beta'))
+
+  draw(a, BarGraph, 'alpha last spectrum')
+  draw(a, Spectrogram, 'alpha spectra')
+  draw(b, BarGraph, 'beta last spectrum')
+  draw(b, Spectrogram, 'beta spectra')
+
 };
 
 }).apply(this, arguments);
 
-},{"./views/Number.js":179,"./views/Spectrogram.js":180,"fft-js":44}],178:[function(require,module,exports){
+},{"./patches/Bandpass.js":179,"./views/BarGraph.js":182,"./views/Number.js":183,"./views/Spectrogram.js":184,"fft-js":45}],181:[function(require,module,exports){
 _hmr["websocket:null"].initModule("socket.js", module);
 (function(){
 var io = require('socket.io-client')
@@ -31271,75 +31488,162 @@ module.exports = function () {
 
 }).apply(this, arguments);
 
-},{"socket.io-client":116}],179:[function(require,module,exports){
-_hmr["websocket:null"].initModule("views/Number.js", module);
-(function(){
-var h = require('virtual-dom/h')
-
-function spectrogram (list) {
-
-  console.log(list[0])
-
-  return h('h1',{ style: {
-    'overflow': 'hidden'
-    , 'padding-bottom': '10px'
-   }
-  }, list[0])
-    
-}
-
-
-module.exports = spectrogram
-
-}).apply(this, arguments);
-
-},{"virtual-dom/h":145}],180:[function(require,module,exports){
-_hmr["websocket:null"].initModule("views/Spectrogram.js", module);
+},{"socket.io-client":118}],182:[function(require,module,exports){
+_hmr["websocket:null"].initModule("views/BarGraph.js", module);
 (function(){
 var h = require('virtual-dom/h')
   , _ = require('lodash')
   , LinScale = require('simple-linear-scale')
 
-function spectrogram (list) {
+function spectrogram () {
+
+  return function (list) {
+
+    var divHeight = 100
+
+    var maxValue = _.max(list)
+
+    var normalize = LinScale([0, maxValue], [0, divHeight])
+
+    function drawMagnitude (mag) {
+      return h('div.point', { style: {
+          'height': normalize(mag) + 'px'
+        , 'width': '1px' 
+        , 'float': 'left'
+        , 'padding':'1px' 
+        , 'background-color': '#3ee'
+        }
+       })
+      }
+
+    function maxValueAxis (v) {
+      return h('div', { style: {
+        'position':'absolute'
+      , 'bottom': '10px'
+      , 'left': '0'
+      , 'font-size': '8pt'
+      , 'font-style': 'italic'
+      , 'color': '#ccc'
+      }}
+      , v)
+    }
+ 
+    return h('div', { 
+      style: {
+         'overflow': 'hidden'
+       , 'padding-bottom': '30px'
+       , 'position': 'relative'
+     }}, [
+        _.map(list, drawMagnitude) 
+      , maxValueAxis(maxValue)
+    ])
+  }
+}
+
+
+module.exports = spectrogram
+
+}).apply(this, arguments);
+
+},{"lodash":65,"simple-linear-scale":117,"virtual-dom/h":147}],183:[function(require,module,exports){
+_hmr["websocket:null"].initModule("views/Number.js", module);
+(function(){
+var h = require('virtual-dom/h')
+
+function number () {
+
+  return function (list) {
+    console.log(list[0])
+    return h('h1',{ style: {
+      'overflow': 'hidden'
+      , 'padding-bottom': '10px'
+     }
+    }, list[0])
+  }
+    
+}
+
+
+module.exports = number
+
+}).apply(this, arguments);
+
+},{"virtual-dom/h":147}],184:[function(require,module,exports){
+_hmr["websocket:null"].initModule("views/Spectrogram.js", module);
+(function(){
+var h = require('virtual-dom/h')
+  , _ = require('lodash')
+  , LinScale = require('simple-linear-scale')
+  , LogScale = require('log-scale')
+  , CircularBuffer = require('circular-buffer')
+
+function spectrogram () {
 
   var divHeight = 100
 
-  var maxValue = _.max(list)
+  var minWidth = 200
 
-  var normalize = LinScale([0, maxValue], [0, divHeight])
+  var lineHeight = 2
 
-  function drawMagnitude (mag) {
-    return h('div.point', { style: {
-        'height': normalize(mag) + 'px'
-      , 'width': '1px' 
-      , 'float': 'left'
-      , 'padding':'1px' 
-      , 'background-color': '#3ee'
-      }
-     })
+  var bufferSize = divHeight / lineHeight
+
+  var buffer = new CircularBuffer(bufferSize)
+  
+  return function (list) {
+    
+    // ad new list to buffer
+    buffer.enq(list)
+
+    // dump whole buffer
+    var allBufferedLists = buffer.toarray()
+
+    // get min and max from whole buffer
+    var f = _.flatten(allBufferedLists)
+    var minValue = _.min(f)
+    var maxValue = _.max(f)
+  
+    //var logScale = new LogScale(minValue, maxValue)
+    // hues, blue to red: http://hslpicker.com/#f00
+    //var linScale = LinScale([0, 1], [235, 360])
+    // make a function that turns a magnitude into a color
+//    function hueScale (v) {
+//      return linScale(logScale.logarithmicToLinear(v))
+//    }
+  
+    // hues, blue to red: http://hslpicker.com/#f00
+    var hueScale = LinScale(
+        [minValue, maxValue]
+      , [235, 360])
+
+    function drawMagnitude (mag) {
+
+      var colorString = 'hsl(' + hueScale(mag) + ', 100%, 50%)'
+
+      return h('div.point', { style: {
+          'height': lineHeight + 'px'
+        , 'width': '1px' 
+        , 'float': 'left'
+        , 'background-color': colorString
+        }
+      })
+
     }
 
-  function maxValueAxis (v) {
-    return h('div', { style: {
-      'position':'absolute'
-    , 'bottom': '10px'
-    , 'left': '0'
-    , 'font-size': '8pt'
-    , 'font-style': 'italic'
-    , 'color': '#ccc'
-    }}
-    , v)
-  }
- 
-  return h('div', { 
-    style: {
+    function drawSpecBar (list) {
+      return h('div', { style: {
+        'clear':'both'
+      }},
+        _.map(list, drawMagnitude))
+    }
+      
+    return h('div', { 
+      style: {
        'overflow': 'hidden'
      , 'padding-bottom': '30px'
-     , 'position': 'relative'
-   }}, [
-      _.map(list, drawMagnitude) 
-    , maxValueAxis(maxValue)
-  ])
+     }}, 
+      _.map(allBufferedLists, drawSpecBar))
+
+  }
     
 }
 
@@ -31348,14 +31652,14 @@ module.exports = spectrogram
 
 }).apply(this, arguments);
 
-},{"lodash":64,"simple-linear-scale":115,"virtual-dom/h":145}],1:[function(require,module,exports){
+},{"circular-buffer":13,"lodash":65,"log-scale":66,"simple-linear-scale":117,"virtual-dom/h":147}],1:[function(require,module,exports){
 (function(global, _main, moduleDefs, cachedModules, _entries) {
   'use strict';
   // This is the client code for Browserify-HMR. It's currently all in one file
   // (besides the socket.io-client) because it needs to define some things
   // before require is called.
-  var moduleMeta = {"node_modules/kefir/dist/kefir.js":{"index":63,"hash":"mFaCcPyxQjUZN450dok9","parents":["browser.js"]},"node_modules/socket.io-client/node_modules/debug/debug.js":{"index":122,"hash":"OtjmSmEbIU/8orJwFhDT","parents":["node_modules/socket.io-client/lib/url.js","node_modules/socket.io-client/lib/socket.js","node_modules/socket.io-client/lib/manager.js","node_modules/socket.io-client/lib/index.js"]},"socket.js":{"index":178,"hash":"+xVEt7Z1UOYR7lnFhwog","parents":["browser.js"]},"node_modules/socket.io-client/index.js":{"index":116,"hash":"ccYBPsaIqMCtG5CHCdDd","parents":["socket.js"]},"node_modules/xtend/immutable.js":{"index":175,"hash":"5a1nO6vLB7FxjnzEAWFm","parents":["node_modules/mercury/index.js"]},"node_modules/observ/index.js":{"index":107,"hash":"vceHTSge/cEMcrChFvL+","parents":["node_modules/observ-struct/index.js","node_modules/observ/computed.js","node_modules/observ-varhash/index.js","node_modules/observ-array/index.js","node_modules/mercury/index.js"]},"node_modules/observ/watch.js":{"index":108,"hash":"ZEJxQQ8ADTJ70CsQbqx1","parents":["node_modules/mercury/index.js"]},"node_modules/parseuri/index.js":{"index":111,"hash":"PsPou9y5yKmPMPJnjEkz","parents":["node_modules/socket.io-client/lib/url.js"]},"node_modules/socket.io-client/lib/url.js":{"index":121,"hash":"/WgdaMtSTLlxFoTxZTGl","parents":["node_modules/socket.io-client/lib/manager.js","node_modules/socket.io-client/lib/index.js"]},"node_modules/socket.io-client/lib/on.js":{"index":119,"hash":"y5MOoFpTKKBHwE8q8jae","parents":["node_modules/socket.io-client/lib/socket.js","node_modules/socket.io-client/lib/manager.js"]},"node_modules/component-emitter/index.js":{"index":14,"hash":"0uL1LSa/mOj+Llu+HTZ7","parents":["node_modules/socket.io-client/lib/socket.js","node_modules/socket.io-parser/index.js","node_modules/engine.io-client/lib/transport.js","node_modules/engine.io-client/lib/transports/polling-xhr.js","node_modules/engine.io-client/lib/socket.js","node_modules/socket.io-client/lib/manager.js"]},"node_modules/component-bind/index.js":{"index":13,"hash":"4yIcVw+afwUsnTQyI0a3","parents":["node_modules/socket.io-client/lib/socket.js","node_modules/socket.io-client/lib/manager.js"]},"node_modules/to-array/index.js":{"index":128,"hash":"2EoggafxX+GLXkXiaGjm","parents":["node_modules/socket.io-client/lib/socket.js"]},"node_modules/socket.io-parser/is-buffer.js":{"index":125,"hash":"UJBXKAfBg/BkigSZbc3Z","parents":["node_modules/socket.io-parser/binary.js","node_modules/socket.io-parser/index.js"]},"node_modules/socket.io-parser/node_modules/debug/debug.js":{"index":126,"hash":"OtjmSmEbIU/8orJwFhDT","parents":["node_modules/socket.io-parser/index.js"]},"node_modules/isarray/index.js":{"index":61,"hash":"dKtews1S4sHvaZhZ+ceq","parents":["node_modules/has-binary/index.js","node_modules/socket.io-parser/binary.js","node_modules/socket.io-parser/index.js"]},"node_modules/json3/lib/json3.js":{"index":62,"hash":"Z22TAqz9HSDSuQH535ZO","parents":["node_modules/socket.io-parser/index.js"]},"node_modules/object-component/index.js":{"index":90,"hash":"zOYybxl/D7KsteH/xJyk","parents":["node_modules/socket.io-client/lib/manager.js"]},"node_modules/indexof/index.js":{"index":57,"hash":"8zMGV0j0ID5bUIeT7r+M","parents":["node_modules/engine.io-client/lib/socket.js","node_modules/socket.io-client/lib/manager.js"]},"node_modules/backo2/index.js":{"index":6,"hash":"L5ry3mfVEw1wgmx9Sa+q","parents":["node_modules/socket.io-client/lib/manager.js"]},"node_modules/camelize/index.js":{"index":12,"hash":"RezMP6zkJacA3xNhX2fl","parents":["node_modules/error/typed.js"]},"node_modules/string-template/index.js":{"index":127,"hash":"NUV6nAzvNFu/NNqhHtCH","parents":["node_modules/error/typed.js"]},"node_modules/xtend/mutable.js":{"index":176,"hash":"zwbl6bCoaC8SKgMawk05","parents":["node_modules/error/typed.js"]},"node_modules/error/typed.js":{"index":40,"hash":"ZsvOVujWUSHf4KU1Rv8h","parents":["node_modules/main-loop/index.js"]},"node_modules/process/browser.js":{"index":113,"hash":"d/Dio43QDX3Xt7NYvbr6","parents":["node_modules/performance-now/lib/performance-now.js"]},"node_modules/performance-now/lib/performance-now.js":{"index":112,"hash":"gxdFgpRFB4y6D7pqx1CJ","parents":["node_modules/raf/index.js"]},"node_modules/raf/index.js":{"index":114,"hash":"zYBgGM9Su52JzQ+fO+1K","parents":["node_modules/main-loop/index.js"]},"node_modules/main-loop/index.js":{"index":65,"hash":"UJhQBTf0bgwslIwe3W3j","parents":["node_modules/mercury/index.js","browser.js"]},"node_modules/virtual-dom/vnode/version.js":{"index":165,"hash":"DOTiEGmK3Zzsyc2tEULH","parents":["node_modules/virtual-dom/vnode/vtext.js","node_modules/virtual-dom/vnode/is-vnode.js","node_modules/virtual-dom/vnode/vnode.js","node_modules/virtual-dom/vnode/is-vtext.js","node_modules/virtual-dom/vnode/vpatch.js"]},"node_modules/virtual-dom/vnode/vtext.js":{"index":168,"hash":"wg0WuQ0TvKNezVNVaZdg","parents":["node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/index.js"]},"node_modules/virtual-dom/vnode/is-widget.js":{"index":164,"hash":"EnIdhulqiUPci9o3bRhi","parents":["node_modules/virtual-dom/vnode/vnode.js","node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/virtual-dom/vtree/diff.js","node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/vdom/create-element.js","node_modules/virtual-dom/vdom/update-widget.js","node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/virtual-dom/vnode/is-thunk.js":{"index":160,"hash":"JgqYSVwfC6W0CqfLC9Fu","parents":["node_modules/virtual-dom/vnode/vnode.js","node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/virtual-dom/vtree/diff.js","node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/virtual-dom/vnode/is-vhook.js":{"index":161,"hash":"FEbZWoZabeqhJGW5pqrb","parents":["node_modules/virtual-dom/vnode/vnode.js","node_modules/virtual-dom/vtree/diff-props.js","node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/vdom/apply-properties.js"]},"node_modules/observ-struct/node_modules/xtend/index.js":{"index":103,"hash":"5a1nO6vLB7FxjnzEAWFm","parents":["node_modules/observ-struct/index.js"]},"node_modules/observ-struct/index.js":{"index":102,"hash":"kJepUbMoKUfQgLhHApeO","parents":["node_modules/mercury/index.js"]},"node_modules/value-event/event.js":{"index":133,"hash":"iWJMYisuqVF8i4vHWrcU","parents":["node_modules/mercury/index.js"]},"node_modules/value-event/base-event.js":{"index":130,"hash":"k9eYGs+tFWi9IfznBMql","parents":["node_modules/value-event/event.js","node_modules/value-event/key.js","node_modules/value-event/click.js","node_modules/value-event/value.js","node_modules/value-event/submit.js","node_modules/value-event/change.js","node_modules/mercury/index.js"]},"node_modules/value-event/key.js":{"index":134,"hash":"7JXKQmMUX8NgbNm22QFS","parents":["node_modules/mercury/index.js"]},"node_modules/value-event/click.js":{"index":132,"hash":"nLkxU5CQ73gCJdnTBZqU","parents":["node_modules/mercury/index.js"]},"node_modules/geval/multiple.js":{"index":52,"hash":"mC08tb7fc+uZsWWVVGVt","parents":["node_modules/mercury/index.js"]},"node_modules/geval/single.js":{"index":53,"hash":"qNQ55et1i8iDK0UGjdgy","parents":["node_modules/geval/multiple.js","node_modules/mercury/index.js"]},"node_modules/observ/computed.js":{"index":106,"hash":"vojAxdsrnZAXdc2qnxp2","parents":["node_modules/mercury/index.js"]},"node_modules/geval/event.js":{"index":51,"hash":"uv5vn8s3vQ5K1zKbxGdr","parents":["node_modules/geval/single.js"]},"node_modules/observ-varhash/node_modules/xtend/index.js":{"index":105,"hash":"5a1nO6vLB7FxjnzEAWFm","parents":["node_modules/observ-varhash/index.js"]},"node_modules/observ-varhash/index.js":{"index":104,"hash":"t7djbYAQP11PGDmqBwSm","parents":["node_modules/mercury/index.js"]},"node_modules/dom-delegator/index.js":{"index":19,"hash":"y16khf8EO9cppAMeIQPF","parents":["node_modules/value-event/base-event.js","node_modules/mercury/index.js"]},"node_modules/value-event/value.js":{"index":138,"hash":"DWkvijrG4DH57P6hAAKO","parents":["node_modules/mercury/index.js"]},"node_modules/value-event/node_modules/xtend/index.js":{"index":136,"hash":"4NVVgVoCO4Z9jIlPh7Db","parents":["node_modules/value-event/value.js","node_modules/value-event/submit.js","node_modules/value-event/change.js"]},"node_modules/form-data-set/element.js":{"index":49,"hash":"co308JCGIruIhifSRMxA","parents":["node_modules/value-event/value.js","node_modules/value-event/submit.js","node_modules/value-event/change.js"]},"node_modules/value-event/submit.js":{"index":137,"hash":"CENSeRdEg9LdEkXVNuzy","parents":["node_modules/mercury/index.js"]},"node_modules/x-is-array/index.js":{"index":174,"hash":"+fUjYQGFfc7vR+jWonJ2","parents":["node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/vtree/diff.js","node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/mercury/node_modules/virtual-dom/vdom/patch.js","node_modules/virtual-dom/vdom/patch.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/is-widget.js":{"index":83,"hash":"EnIdhulqiUPci9o3bRhi","parents":["node_modules/mercury/node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js","node_modules/mercury/node_modules/virtual-dom/vnode/vnode.js","node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/mercury/node_modules/virtual-dom/vdom/update-widget.js","node_modules/mercury/node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/is-thunk.js":{"index":79,"hash":"JgqYSVwfC6W0CqfLC9Fu","parents":["node_modules/mercury/node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/vnode/vnode.js","node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/browser-resolve/empty.js":{"index":10,"hash":"47DEQpj8HBSa+/TImW+5","parents":["node_modules/mercury/node_modules/global/document.js","node_modules/dom-delegator/node_modules/global/document.js","node_modules/virtual-dom/node_modules/global/document.js"]},"node_modules/mercury/node_modules/global/document.js":{"index":67,"hash":"03o+x3wdGOEtc9mkRLua","parents":["node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js","node_modules/mercury/node_modules/virtual-dom/vdom/patch.js"]},"node_modules/observ-array/transaction.js":{"index":101,"hash":"qHhRdpP7pw5EuhnAlOkk","parents":["node_modules/observ-array/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vdom/dom-index.js":{"index":70,"hash":"Q/z8Hr/aeiHZDu3PqlER","parents":["node_modules/mercury/node_modules/virtual-dom/vdom/patch.js"]},"node_modules/individual/index.js":{"index":58,"hash":"sIMswIHP7cX+YbEsnhG7","parents":["node_modules/dom-delegator/index.js"]},"node_modules/cuid/dist/browser-cuid.js":{"index":16,"hash":"/XXSPqd4gYf6vsG3bFD4","parents":["node_modules/dom-delegator/index.js"]},"node_modules/dom-delegator/node_modules/global/document.js":{"index":20,"hash":"03o+x3wdGOEtc9mkRLua","parents":["node_modules/dom-delegator/dom-delegator.js","node_modules/dom-delegator/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/is-vhook.js":{"index":80,"hash":"FEbZWoZabeqhJGW5pqrb","parents":["node_modules/mercury/node_modules/virtual-dom/vtree/diff-props.js","node_modules/mercury/node_modules/virtual-dom/vdom/apply-properties.js","node_modules/mercury/node_modules/virtual-dom/vnode/vnode.js","node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/hooks/soft-set-hook.js":{"index":75,"hash":"AKVlBuGYEy8Jcyp8v/pX","parents":["node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/has-binary/index.js":{"index":55,"hash":"ZLLgu+QfLGB5FJs6P2Ow","parents":["node_modules/socket.io-client/lib/socket.js","node_modules/engine.io-parser/lib/browser.js"]},"node_modules/socket.io-client/lib/socket.js":{"index":120,"hash":"mVenx7k8VFtvIejsDYOl","parents":["node_modules/socket.io-client/lib/manager.js","node_modules/socket.io-client/lib/index.js"]},"node_modules/socket.io-parser/index.js":{"index":124,"hash":"BAgSAi2yJ1LAoE3Vw1D4","parents":["node_modules/socket.io-client/lib/socket.js","node_modules/socket.io-client/lib/manager.js","node_modules/socket.io-client/lib/index.js"]},"node_modules/socket.io-parser/binary.js":{"index":123,"hash":"bAee8RukaXwuD/OeGN6F","parents":["node_modules/socket.io-parser/index.js"]},"node_modules/virtual-dom/vnode/is-vnode.js":{"index":162,"hash":"FDpmod5Su6OvKspP7Lkx","parents":["node_modules/virtual-dom/vnode/vnode.js","node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/virtual-dom/vtree/diff.js","node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/vdom/create-element.js"]},"node_modules/virtual-dom/vnode/vnode.js":{"index":166,"hash":"Ll6I+kyTeUcnCfEggmis","parents":["node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/index.js"]},"node_modules/virtual-dom/virtual-hyperscript/hooks/soft-set-hook.js":{"index":156,"hash":"AKVlBuGYEy8Jcyp8v/pX","parents":["node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/virtual-dom/node_modules/global/document.js":{"index":147,"hash":"03o+x3wdGOEtc9mkRLua","parents":["node_modules/virtual-dom/vdom/create-element.js","node_modules/virtual-dom/vdom/patch.js"]},"node_modules/virtual-dom/vdom/dom-index.js":{"index":151,"hash":"Q/z8Hr/aeiHZDu3PqlER","parents":["node_modules/virtual-dom/vdom/patch.js"]},"node_modules/value-event/node_modules/xtend/has-keys.js":{"index":135,"hash":"2+eWCAg8LA4O8hN1anSi","parents":["node_modules/value-event/node_modules/xtend/index.js"]},"node_modules/form-data-set/index.js":{"index":50,"hash":"/BHlb5/rXKUABG7lxyH4","parents":["node_modules/form-data-set/element.js"]},"node_modules/dom-walk/index.js":{"index":23,"hash":"5WTr9z17mIPFM/vuAwt6","parents":["node_modules/form-data-set/element.js"]},"node_modules/value-event/change.js":{"index":131,"hash":"+IJDKnVIdST+LtYNbWdm","parents":["node_modules/mercury/index.js"]},"node_modules/vdom-thunk/shallow-eq.js":{"index":142,"hash":"OhqYVXBzcMCIrkzSP+4L","parents":["node_modules/vdom-thunk/partial.js"]},"node_modules/vdom-thunk/immutable-thunk.js":{"index":139,"hash":"TppaBT9mODp1puCswzq6","parents":["node_modules/vdom-thunk/partial.js"]},"node_modules/vdom-thunk/partial.js":{"index":141,"hash":"MN2YK5aYb3sUuo7l4GZe","parents":["node_modules/vdom-thunk/index.js"]},"node_modules/vdom-thunk/index.js":{"index":140,"hash":"PXODlvHP7pPx/Df6RtAB","parents":["node_modules/mercury/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/version.js":{"index":84,"hash":"M4aGaQEohe0J4i1BWywB","parents":["node_modules/mercury/node_modules/virtual-dom/vnode/is-vnode.js","node_modules/mercury/node_modules/virtual-dom/vnode/is-vtext.js","node_modules/mercury/node_modules/virtual-dom/vnode/vpatch.js","node_modules/mercury/node_modules/virtual-dom/vnode/vnode.js","node_modules/mercury/node_modules/virtual-dom/vnode/vtext.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/is-vnode.js":{"index":81,"hash":"FDpmod5Su6OvKspP7Lkx","parents":["node_modules/mercury/node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js","node_modules/mercury/node_modules/virtual-dom/vnode/vnode.js","node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/is-vtext.js":{"index":82,"hash":"YpQcCD/14F1aFXVYTL/I","parents":["node_modules/mercury/node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js","node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/handle-thunk.js":{"index":78,"hash":"T/onB7jD0IVaUmjunIKM","parents":["node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/vpatch.js":{"index":86,"hash":"MJVlIbEahmt/8PkdqcCm","parents":["node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/is-object/index.js":{"index":60,"hash":"MUxlLZUU//dKFOPJOxKs","parents":["node_modules/mercury/node_modules/virtual-dom/vtree/diff-props.js","node_modules/mercury/node_modules/virtual-dom/vdom/apply-properties.js","node_modules/virtual-dom/vtree/diff-props.js","node_modules/virtual-dom/vdom/apply-properties.js"]},"node_modules/mercury/node_modules/virtual-dom/vtree/diff-props.js":{"index":88,"hash":"1otM+ABfMRMMFfmMgSnC","parents":["node_modules/mercury/node_modules/virtual-dom/vtree/diff.js"]},"node_modules/mercury/node_modules/virtual-dom/vtree/diff.js":{"index":89,"hash":"2owjmFjZwEjnTBAPzEP5","parents":["node_modules/mercury/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vdom/apply-properties.js":{"index":68,"hash":"eJQfHtLvbzWRhmAbq74/","parents":["node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js","node_modules/mercury/node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js":{"index":69,"hash":"EU/pk5pZsyLFx67s2EoU","parents":["node_modules/mercury/node_modules/virtual-dom/vdom/patch-op.js","node_modules/mercury/index.js"]},"node_modules/observ-array/lib/set-non-enumerable.js":{"index":97,"hash":"Z7+NOhZqPyZ1tK+HDjCF","parents":["node_modules/observ-array/add-listener.js","node_modules/observ-array/splice.js","node_modules/observ-array/put.js","node_modules/observ-array/set.js","node_modules/observ-array/array-reverse.js","node_modules/observ-array/array-sort.js"]},"node_modules/observ-array/add-listener.js":{"index":91,"hash":"rrxsk4ZG0paF7x6RW9sa","parents":["node_modules/observ-array/splice.js","node_modules/observ-array/put.js","node_modules/observ-array/apply-patch.js","node_modules/observ-array/index.js"]},"node_modules/observ-array/splice.js":{"index":100,"hash":"KFBy8d8KGS0NqNe+o0Na","parents":["node_modules/observ-array/index.js"]},"node_modules/observ-array/put.js":{"index":98,"hash":"bCedUBRr12hj9khUXrj4","parents":["node_modules/observ-array/index.js"]},"node_modules/adiff/index.js":{"index":3,"hash":"u7xn1HPbooTouevqO9G9","parents":["node_modules/observ-array/set.js"]},"node_modules/browser-split/index.js":{"index":11,"hash":"wOoDDqivqVK8yNeMmiIY","parents":["node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/parse-tag.js","node_modules/virtual-dom/virtual-hyperscript/parse-tag.js"]},"node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/parse-tag.js":{"index":77,"hash":"osu8XFhBGgyHnmXBZSOC","parents":["node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/vnode.js":{"index":85,"hash":"Ll6I+kyTeUcnCfEggmis","parents":["node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/vtext.js":{"index":87,"hash":"wg0WuQ0TvKNezVNVaZdg","parents":["node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/hooks/ev-hook.js":{"index":74,"hash":"lm34o29DbosiGB97NNRq","parents":["node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/ev-store/index.js":{"index":41,"hash":"GPec7cSnjAUoioi+HEwF","parents":["node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/hooks/ev-hook.js","node_modules/virtual-dom/virtual-hyperscript/hooks/ev-hook.js","node_modules/dom-delegator/add-event.js","node_modules/dom-delegator/remove-event.js","node_modules/dom-delegator/dom-delegator.js"]},"node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js":{"index":76,"hash":"yRsnfKJEfb3thKXL3+Yo","parents":["node_modules/mercury/index.js"]},"node_modules/virtual-dom/vnode/is-vtext.js":{"index":163,"hash":"YpQcCD/14F1aFXVYTL/I","parents":["node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/virtual-dom/vtree/diff.js","node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/vdom/create-element.js"]},"node_modules/virtual-dom/vnode/handle-thunk.js":{"index":159,"hash":"T/onB7jD0IVaUmjunIKM","parents":["node_modules/virtual-dom/vtree/diff.js","node_modules/virtual-dom/vdom/create-element.js"]},"node_modules/virtual-dom/vnode/vpatch.js":{"index":167,"hash":"MJVlIbEahmt/8PkdqcCm","parents":["node_modules/virtual-dom/vtree/diff.js","node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/virtual-dom/vtree/diff-props.js":{"index":169,"hash":"1otM+ABfMRMMFfmMgSnC","parents":["node_modules/virtual-dom/vtree/diff.js"]},"node_modules/virtual-dom/vtree/diff.js":{"index":170,"hash":"TMkbTHsG9cQWvir0aZ4K","parents":["node_modules/virtual-dom/diff.js"]},"node_modules/virtual-dom/diff.js":{"index":144,"hash":"lXWPpzBRq7hc4xwcZY5C","parents":["node_modules/virtual-dom/index.js"]},"node_modules/virtual-dom/virtual-hyperscript/parse-tag.js":{"index":158,"hash":"E9t51hE2h4ENFoYEyo9D","parents":["node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/virtual-dom/virtual-hyperscript/hooks/ev-hook.js":{"index":155,"hash":"lm34o29DbosiGB97NNRq","parents":["node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/virtual-dom/virtual-hyperscript/index.js":{"index":157,"hash":"tdRXcUcZ8m5S584s7gcA","parents":["node_modules/virtual-dom/h.js"]},"node_modules/virtual-dom/h.js":{"index":145,"hash":"3MHxV34NE/EbDnSujyl3","parents":["node_modules/virtual-dom/index.js","views/Number.js","views/Spectrogram.js"]},"node_modules/virtual-dom/vdom/apply-properties.js":{"index":149,"hash":"eJQfHtLvbzWRhmAbq74/","parents":["node_modules/virtual-dom/vdom/create-element.js","node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/virtual-dom/vdom/create-element.js":{"index":150,"hash":"EU/pk5pZsyLFx67s2EoU","parents":["node_modules/virtual-dom/create-element.js","node_modules/virtual-dom/vdom/patch.js"]},"node_modules/virtual-dom/create-element.js":{"index":143,"hash":"gLUXNTAWcfxRJi0jMQ9n","parents":["node_modules/virtual-dom/index.js"]},"node_modules/observ-array/apply-patch.js":{"index":92,"hash":"NCaZvQWXJ3JzcLjx0uv4","parents":["node_modules/observ-array/set.js","node_modules/observ-array/array-reverse.js","node_modules/observ-array/array-sort.js"]},"node_modules/observ-array/set.js":{"index":99,"hash":"vimtn+HBYwH0LBLZXO0o","parents":["node_modules/observ-array/index.js"]},"node_modules/observ-array/array-reverse.js":{"index":94,"hash":"8dh5AroXNCJYN1qFmfy9","parents":["node_modules/observ-array/array-methods.js"]},"node_modules/observ-array/array-sort.js":{"index":95,"hash":"g8NUwlt1W0XmdE/mhoGj","parents":["node_modules/observ-array/array-methods.js"]},"node_modules/observ-array/array-methods.js":{"index":93,"hash":"1fVmKhHYnZg5f9I1UibI","parents":["node_modules/observ-array/index.js"]},"node_modules/observ-array/index.js":{"index":96,"hash":"Ig4Qhz5tWZPeTqsqFd5V","parents":["node_modules/observ-array/array-methods.js","node_modules/mercury/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vdom/update-widget.js":{"index":73,"hash":"PUUzad5Yr/YxGu0jLhxK","parents":["node_modules/mercury/node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/mercury/node_modules/virtual-dom/vdom/patch-op.js":{"index":71,"hash":"t80rxD/9w4yXrMAdRr2i","parents":["node_modules/mercury/node_modules/virtual-dom/vdom/patch.js"]},"node_modules/mercury/node_modules/virtual-dom/vdom/patch.js":{"index":72,"hash":"hm9hYurnlnqgnDcdqnHc","parents":["node_modules/mercury/index.js"]},"node_modules/dom-delegator/add-event.js":{"index":17,"hash":"J35BpWrXLdtMXDCKsSIy","parents":["node_modules/dom-delegator/dom-delegator.js"]},"node_modules/dom-delegator/remove-event.js":{"index":22,"hash":"pmXwl9utiz+tTVPlsQi4","parents":["node_modules/dom-delegator/dom-delegator.js"]},"node_modules/inherits/inherits_browser.js":{"index":59,"hash":"NKmKH8054SrbyYzC1tw9","parents":["node_modules/dom-delegator/proxy-event.js"]},"node_modules/dom-delegator/proxy-event.js":{"index":21,"hash":"ovI0em8uwfa06myI07Qf","parents":["node_modules/dom-delegator/dom-delegator.js"]},"node_modules/weakmap-shim/hidden-store.js":{"index":172,"hash":"wz6lY2tTxpt897LT2+1E","parents":["node_modules/weakmap-shim/create-store.js"]},"node_modules/weakmap-shim/create-store.js":{"index":171,"hash":"TLvOGWGV+rjuwcjvTCri","parents":["node_modules/dom-delegator/dom-delegator.js"]},"node_modules/engine.io-parser/lib/keys.js":{"index":39,"hash":"oFyKNTA0twlyQVhVzp9n","parents":["node_modules/engine.io-parser/lib/browser.js"]},"node_modules/utf8/utf8.js":{"index":129,"hash":"Mqm8G2xyYXmBOFrE+/6A","parents":["node_modules/engine.io-parser/lib/browser.js"]},"node_modules/arraybuffer.slice/index.js":{"index":5,"hash":"RSb5Zx9CgX3adjzbvf/k","parents":["node_modules/engine.io-parser/lib/browser.js"]},"node_modules/after/index.js":{"index":4,"hash":"NzPfXWECmM8rW/6fdkcj","parents":["node_modules/engine.io-parser/lib/browser.js"]},"node_modules/blob/index.js":{"index":9,"hash":"q7L6uHK9eN9yEvDVNxJw","parents":["node_modules/engine.io-parser/lib/browser.js"]},"node_modules/base64-arraybuffer/lib/base64-arraybuffer.js":{"index":7,"hash":"dW6cnktjBIyZ6bv9vRp2","parents":["node_modules/engine.io-parser/lib/browser.js"]},"node_modules/engine.io-parser/lib/browser.js":{"index":38,"hash":"Xr2KhMDa3GjqERGsK7Lc","parents":["node_modules/engine.io-client/lib/transport.js","node_modules/engine.io-client/lib/transports/websocket.js","node_modules/engine.io-client/lib/transports/polling.js","node_modules/engine.io-client/lib/socket.js","node_modules/engine.io-client/lib/index.js"]},"node_modules/engine.io-client/node_modules/parseuri/index.js":{"index":37,"hash":"c/c7XftSI6ClFc9h2jOh","parents":["node_modules/engine.io-client/lib/socket.js"]},"node_modules/parsejson/index.js":{"index":109,"hash":"3RLuznQNKZiQ/toCXNir","parents":["node_modules/engine.io-client/lib/socket.js"]},"node_modules/parseqs/index.js":{"index":110,"hash":"FI4tRELwI5Itz+ckwR+m","parents":["node_modules/engine.io-client/lib/transports/websocket.js","node_modules/engine.io-client/lib/transports/polling.js","node_modules/engine.io-client/lib/socket.js"]},"node_modules/virtual-dom/vdom/update-widget.js":{"index":154,"hash":"PUUzad5Yr/YxGu0jLhxK","parents":["node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/virtual-dom/vdom/patch-op.js":{"index":152,"hash":"yap3UIU6PraiJ/hBgyv3","parents":["node_modules/virtual-dom/vdom/patch.js"]},"node_modules/virtual-dom/vdom/patch.js":{"index":153,"hash":"wNFrOwhABvQyzyIZnhi6","parents":["node_modules/virtual-dom/patch.js"]},"node_modules/virtual-dom/patch.js":{"index":148,"hash":"At7MHaN+iyN3Kt0YpeOd","parents":["node_modules/virtual-dom/index.js"]},"node_modules/virtual-dom/index.js":{"index":146,"hash":"V62ynNXeILNWwH6GcwzS","parents":["browser.js"]},"node_modules/ev-store/node_modules/individual/index.js":{"index":42,"hash":"slR1G+HPCuudSb4q07OZ","parents":["node_modules/ev-store/node_modules/individual/one-version.js"]},"node_modules/ev-store/node_modules/individual/one-version.js":{"index":43,"hash":"Xmlm2MjHcE1cVA7a4fNz","parents":["node_modules/ev-store/index.js"]},"node_modules/dom-delegator/dom-delegator.js":{"index":18,"hash":"MO7jhLa9hW2L59TmPtjV","parents":["node_modules/dom-delegator/index.js"]},"node_modules/mercury/index.js":{"index":66,"hash":"iypfxilRxnisfmynQ9Wf","parents":["browser.js"]},"node_modules/engine.io-client/lib/transport.js":{"index":27,"hash":"8Wg7zuMzQpa+AwOxaesw","parents":["node_modules/engine.io-client/lib/transports/websocket.js","node_modules/engine.io-client/lib/transports/polling.js","node_modules/engine.io-client/lib/socket.js"]},"node_modules/engine.io-client/node_modules/ms/index.js":{"index":36,"hash":"rzSu41c+6ZW8M4Say8X9","parents":["node_modules/engine.io-client/node_modules/debug/debug.js"]},"node_modules/engine.io-client/node_modules/debug/debug.js":{"index":35,"hash":"yqdR7nJc7wxIHzFDNzG+","parents":["node_modules/engine.io-client/node_modules/debug/browser.js"]},"node_modules/engine.io-client/node_modules/debug/browser.js":{"index":34,"hash":"PENVCHp3HppeRm/DiJMI","parents":["node_modules/engine.io-client/lib/transports/websocket.js","node_modules/engine.io-client/lib/transports/polling-xhr.js","node_modules/engine.io-client/lib/transports/polling.js","node_modules/engine.io-client/lib/socket.js"]},"node_modules/component-inherit/index.js":{"index":15,"hash":"T0Fqch4d4akvlr8bh7lc","parents":["node_modules/engine.io-client/lib/transports/websocket.js","node_modules/engine.io-client/lib/transports/polling-xhr.js","node_modules/engine.io-client/lib/transports/polling.js","node_modules/engine.io-client/lib/transports/polling-jsonp.js"]},"node_modules/ws/lib/browser.js":{"index":173,"hash":"vZRI95FVw46PPRoHDauJ","parents":["node_modules/engine.io-client/lib/transports/websocket.js"]},"node_modules/engine.io-client/lib/transports/websocket.js":{"index":32,"hash":"iZQQax7TKsS+8ZxUyrc3","parents":["node_modules/engine.io-client/lib/transports/index.js"]},"node_modules/engine.io-client/lib/transports/polling-xhr.js":{"index":30,"hash":"d89FOYRl9cirXzsJCjKg","parents":["node_modules/engine.io-client/lib/transports/index.js"]},"node_modules/engine.io-client/lib/xmlhttprequest.js":{"index":33,"hash":"us0FsN5s7hiT3hqVV5lx","parents":["node_modules/engine.io-client/lib/transports/polling-xhr.js","node_modules/engine.io-client/lib/transports/polling.js","node_modules/engine.io-client/lib/transports/index.js"]},"node_modules/engine.io-client/lib/transports/polling.js":{"index":31,"hash":"m6eReXjm1pnBQHB07d2V","parents":["node_modules/engine.io-client/lib/transports/polling-xhr.js","node_modules/engine.io-client/lib/transports/polling-jsonp.js"]},"node_modules/engine.io-client/lib/transports/polling-jsonp.js":{"index":29,"hash":"FAm1xe7I43tDMsakGLzq","parents":["node_modules/engine.io-client/lib/transports/index.js"]},"node_modules/global/index.js":{"index":54,"hash":"tDIf5GqqdOcKnNHRh2Rc","parents":["node_modules/has-cors/index.js"]},"node_modules/has-cors/index.js":{"index":56,"hash":"uSUdzzwBDQd7qQNKEZ4o","parents":["node_modules/engine.io-client/lib/xmlhttprequest.js"]},"node_modules/engine.io-client/lib/transports/index.js":{"index":28,"hash":"kQ8FMfawL2PES7dsQgvD","parents":["node_modules/engine.io-client/lib/socket.js"]},"node_modules/engine.io-client/lib/socket.js":{"index":26,"hash":"1L37UZEnorYV+ld5c01T","parents":["node_modules/engine.io-client/lib/index.js"]},"node_modules/engine.io-client/lib/index.js":{"index":25,"hash":"G6QYuSNu0EcS+G5tR9NE","parents":["node_modules/engine.io-client/index.js"]},"node_modules/engine.io-client/index.js":{"index":24,"hash":"HQau4MkD4lAynB9tt0Wl","parents":["node_modules/socket.io-client/lib/manager.js"]},"node_modules/socket.io-client/lib/manager.js":{"index":118,"hash":"+TrOAqk4UlI3tKzIT6Dc","parents":["node_modules/socket.io-client/lib/index.js"]},"node_modules/socket.io-client/lib/index.js":{"index":117,"hash":"lWwRhzm83+Eq08s7Nht/","parents":["node_modules/socket.io-client/index.js"]},"views/Number.js":{"index":179,"hash":"VQGiHHyEkP/lfYyjP7P6","parents":["render.js"]},"node_modules/simple-linear-scale/index.js":{"index":115,"hash":"M1THLbzXTbvztzB7g/ip","parents":["views/Spectrogram.js"]},"node_modules/lodash/index.js":{"index":64,"hash":"pUYi8p3wML8cF/yeWiD/","parents":["views/Spectrogram.js"]},"views/Spectrogram.js":{"index":180,"hash":"6+mvodFGA4QiSBjpL0wL","parents":["render.js"]},"node_modules/fft-js/src/complex.js":{"index":45,"hash":"NzRu4A9deVCjcwi5BT+J","parents":["node_modules/fft-js/src/fftutil.js","node_modules/fft-js/src/dft.js","node_modules/fft-js/src/fft.js"]},"node_modules/fft-js/src/fftutil.js":{"index":48,"hash":"uNEC6ckW2fxMa/+CfXr3","parents":["node_modules/fft-js/src/dft.js","node_modules/fft-js/src/fft.js","node_modules/fft-js/index.js"]},"node_modules/fft-js/src/dft.js":{"index":46,"hash":"eZTzD1DrIFMZXu4rr0g/","parents":["node_modules/fft-js/index.js"]},"node_modules/bit-twiddle/twiddle.js":{"index":8,"hash":"dC+EQtYP6uNftG95SxFB","parents":["node_modules/fft-js/src/fft.js"]},"node_modules/fft-js/src/fft.js":{"index":47,"hash":"nbbRWKLE5Wtn2UaDIa5U","parents":["node_modules/fft-js/index.js"]},"node_modules/fft-js/index.js":{"index":44,"hash":"GotXGK1FzjieBZ2aep6W","parents":["render.js"]},"render.js":{"index":177,"hash":"Dj6huXwhUfFCQ6nGc+n3","parents":["browser.js"]},"browser.js":{"index":2,"hash":"N1SJXQRwVdqjBs3TSxLY","parents":[]}};
-  var originalEntries = ["/home/elsehow/BitTorrent Sync/Projects/hot-reload/browser.js"];
+  var moduleMeta = {"node_modules/kefir/dist/kefir.js":{"index":64,"hash":"mFaCcPyxQjUZN450dok9","parents":["browser.js"]},"node_modules/socket.io-client/node_modules/debug/debug.js":{"index":124,"hash":"OtjmSmEbIU/8orJwFhDT","parents":["node_modules/socket.io-client/lib/url.js","node_modules/socket.io-client/lib/socket.js","node_modules/socket.io-client/lib/manager.js","node_modules/socket.io-client/lib/index.js"]},"socket.js":{"index":181,"hash":"+xVEt7Z1UOYR7lnFhwog","parents":["browser.js"]},"node_modules/socket.io-client/index.js":{"index":118,"hash":"ccYBPsaIqMCtG5CHCdDd","parents":["socket.js"]},"node_modules/xtend/immutable.js":{"index":177,"hash":"5a1nO6vLB7FxjnzEAWFm","parents":["node_modules/mercury/index.js"]},"node_modules/observ/index.js":{"index":109,"hash":"vceHTSge/cEMcrChFvL+","parents":["node_modules/observ-struct/index.js","node_modules/observ/computed.js","node_modules/observ-varhash/index.js","node_modules/observ-array/index.js","node_modules/mercury/index.js"]},"node_modules/observ/watch.js":{"index":110,"hash":"ZEJxQQ8ADTJ70CsQbqx1","parents":["node_modules/mercury/index.js"]},"node_modules/parseuri/index.js":{"index":113,"hash":"PsPou9y5yKmPMPJnjEkz","parents":["node_modules/socket.io-client/lib/url.js"]},"node_modules/socket.io-client/lib/url.js":{"index":123,"hash":"/WgdaMtSTLlxFoTxZTGl","parents":["node_modules/socket.io-client/lib/manager.js","node_modules/socket.io-client/lib/index.js"]},"node_modules/socket.io-client/lib/on.js":{"index":121,"hash":"y5MOoFpTKKBHwE8q8jae","parents":["node_modules/socket.io-client/lib/socket.js","node_modules/socket.io-client/lib/manager.js"]},"node_modules/component-emitter/index.js":{"index":15,"hash":"0uL1LSa/mOj+Llu+HTZ7","parents":["node_modules/socket.io-client/lib/socket.js","node_modules/socket.io-parser/index.js","node_modules/engine.io-client/lib/transport.js","node_modules/engine.io-client/lib/transports/polling-xhr.js","node_modules/engine.io-client/lib/socket.js","node_modules/socket.io-client/lib/manager.js"]},"node_modules/to-array/index.js":{"index":130,"hash":"2EoggafxX+GLXkXiaGjm","parents":["node_modules/socket.io-client/lib/socket.js"]},"node_modules/component-bind/index.js":{"index":14,"hash":"4yIcVw+afwUsnTQyI0a3","parents":["node_modules/socket.io-client/lib/socket.js","node_modules/socket.io-client/lib/manager.js"]},"node_modules/socket.io-parser/is-buffer.js":{"index":127,"hash":"UJBXKAfBg/BkigSZbc3Z","parents":["node_modules/socket.io-parser/binary.js","node_modules/socket.io-parser/index.js"]},"node_modules/socket.io-parser/node_modules/debug/debug.js":{"index":128,"hash":"OtjmSmEbIU/8orJwFhDT","parents":["node_modules/socket.io-parser/index.js"]},"node_modules/isarray/index.js":{"index":62,"hash":"dKtews1S4sHvaZhZ+ceq","parents":["node_modules/has-binary/index.js","node_modules/socket.io-parser/binary.js","node_modules/socket.io-parser/index.js"]},"node_modules/json3/lib/json3.js":{"index":63,"hash":"Z22TAqz9HSDSuQH535ZO","parents":["node_modules/socket.io-parser/index.js"]},"node_modules/object-component/index.js":{"index":92,"hash":"zOYybxl/D7KsteH/xJyk","parents":["node_modules/socket.io-client/lib/manager.js"]},"node_modules/indexof/index.js":{"index":58,"hash":"8zMGV0j0ID5bUIeT7r+M","parents":["node_modules/engine.io-client/lib/socket.js","node_modules/socket.io-client/lib/manager.js"]},"node_modules/backo2/index.js":{"index":6,"hash":"L5ry3mfVEw1wgmx9Sa+q","parents":["node_modules/socket.io-client/lib/manager.js"]},"node_modules/lodash/index.js":{"index":65,"hash":"pUYi8p3wML8cF/yeWiD/","parents":["patches/Bandpass.js","views/Spectrogram.js","views/BarGraph.js"]},"patches/Bandpass.js":{"index":179,"hash":"YQsl5HKdZqB2MLecieJ4","parents":["render.js"]},"node_modules/simple-linear-scale/index.js":{"index":117,"hash":"M1THLbzXTbvztzB7g/ip","parents":["views/Spectrogram.js","views/BarGraph.js"]},"node_modules/log-scale/log_scale.js":{"index":66,"hash":"Q09E4EfCke3YT26aVM1b","parents":["views/Spectrogram.js"]},"node_modules/circular-buffer/index.js":{"index":13,"hash":"PvisujqMOKfrov2A5/va","parents":["views/Spectrogram.js"]},"views/Spectrogram.js":{"index":184,"hash":"8DuVUgn21Ix1+sb5kg42","parents":["render.js"]},"node_modules/virtual-dom/h.js":{"index":147,"hash":"3MHxV34NE/EbDnSujyl3","parents":["views/Spectrogram.js","views/Number.js","node_modules/virtual-dom/index.js","views/BarGraph.js"]},"views/Number.js":{"index":183,"hash":"hIur6GiEA1HJ6nRNYjk8","parents":["render.js"]},"node_modules/observ-struct/node_modules/xtend/index.js":{"index":105,"hash":"5a1nO6vLB7FxjnzEAWFm","parents":["node_modules/observ-struct/index.js"]},"node_modules/observ-struct/index.js":{"index":104,"hash":"kJepUbMoKUfQgLhHApeO","parents":["node_modules/mercury/index.js"]},"node_modules/value-event/event.js":{"index":135,"hash":"iWJMYisuqVF8i4vHWrcU","parents":["node_modules/mercury/index.js"]},"node_modules/value-event/base-event.js":{"index":132,"hash":"k9eYGs+tFWi9IfznBMql","parents":["node_modules/value-event/event.js","node_modules/value-event/key.js","node_modules/value-event/click.js","node_modules/value-event/change.js","node_modules/value-event/submit.js","node_modules/value-event/value.js","node_modules/mercury/index.js"]},"node_modules/value-event/key.js":{"index":136,"hash":"7JXKQmMUX8NgbNm22QFS","parents":["node_modules/mercury/index.js"]},"node_modules/value-event/click.js":{"index":134,"hash":"nLkxU5CQ73gCJdnTBZqU","parents":["node_modules/mercury/index.js"]},"node_modules/geval/multiple.js":{"index":53,"hash":"mC08tb7fc+uZsWWVVGVt","parents":["node_modules/mercury/index.js"]},"node_modules/geval/single.js":{"index":54,"hash":"qNQ55et1i8iDK0UGjdgy","parents":["node_modules/geval/multiple.js","node_modules/mercury/index.js"]},"node_modules/observ/computed.js":{"index":108,"hash":"vojAxdsrnZAXdc2qnxp2","parents":["node_modules/mercury/index.js"]},"node_modules/geval/event.js":{"index":52,"hash":"uv5vn8s3vQ5K1zKbxGdr","parents":["node_modules/geval/single.js"]},"node_modules/observ-varhash/node_modules/xtend/index.js":{"index":107,"hash":"5a1nO6vLB7FxjnzEAWFm","parents":["node_modules/observ-varhash/index.js"]},"node_modules/observ-varhash/index.js":{"index":106,"hash":"t7djbYAQP11PGDmqBwSm","parents":["node_modules/mercury/index.js"]},"node_modules/dom-delegator/index.js":{"index":20,"hash":"y16khf8EO9cppAMeIQPF","parents":["node_modules/value-event/base-event.js","node_modules/mercury/index.js"]},"node_modules/value-event/change.js":{"index":133,"hash":"+IJDKnVIdST+LtYNbWdm","parents":["node_modules/mercury/index.js"]},"node_modules/value-event/node_modules/xtend/index.js":{"index":138,"hash":"4NVVgVoCO4Z9jIlPh7Db","parents":["node_modules/value-event/change.js","node_modules/value-event/submit.js","node_modules/value-event/value.js"]},"node_modules/form-data-set/element.js":{"index":50,"hash":"co308JCGIruIhifSRMxA","parents":["node_modules/value-event/change.js","node_modules/value-event/submit.js","node_modules/value-event/value.js"]},"node_modules/value-event/submit.js":{"index":139,"hash":"CENSeRdEg9LdEkXVNuzy","parents":["node_modules/mercury/index.js"]},"node_modules/x-is-array/index.js":{"index":176,"hash":"+fUjYQGFfc7vR+jWonJ2","parents":["node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/vdom/patch.js","node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/vdom/patch.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/is-widget.js":{"index":85,"hash":"EnIdhulqiUPci9o3bRhi","parents":["node_modules/mercury/node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js","node_modules/mercury/node_modules/virtual-dom/vnode/vnode.js","node_modules/mercury/node_modules/virtual-dom/vdom/update-widget.js","node_modules/mercury/node_modules/virtual-dom/vdom/patch-op.js","node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/is-thunk.js":{"index":81,"hash":"JgqYSVwfC6W0CqfLC9Fu","parents":["node_modules/mercury/node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/vnode/vnode.js","node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/browser-resolve/empty.js":{"index":10,"hash":"47DEQpj8HBSa+/TImW+5","parents":["node_modules/mercury/node_modules/global/document.js","node_modules/dom-delegator/node_modules/global/document.js","node_modules/virtual-dom/node_modules/global/document.js"]},"node_modules/mercury/node_modules/global/document.js":{"index":69,"hash":"03o+x3wdGOEtc9mkRLua","parents":["node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js","node_modules/mercury/node_modules/virtual-dom/vdom/patch.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/is-vhook.js":{"index":82,"hash":"FEbZWoZabeqhJGW5pqrb","parents":["node_modules/mercury/node_modules/virtual-dom/vtree/diff-props.js","node_modules/mercury/node_modules/virtual-dom/vdom/apply-properties.js","node_modules/mercury/node_modules/virtual-dom/vnode/vnode.js","node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/hooks/soft-set-hook.js":{"index":77,"hash":"AKVlBuGYEy8Jcyp8v/pX","parents":["node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/observ-array/transaction.js":{"index":103,"hash":"qHhRdpP7pw5EuhnAlOkk","parents":["node_modules/observ-array/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vdom/dom-index.js":{"index":72,"hash":"Q/z8Hr/aeiHZDu3PqlER","parents":["node_modules/mercury/node_modules/virtual-dom/vdom/patch.js"]},"node_modules/individual/index.js":{"index":59,"hash":"sIMswIHP7cX+YbEsnhG7","parents":["node_modules/dom-delegator/index.js"]},"node_modules/cuid/dist/browser-cuid.js":{"index":17,"hash":"/XXSPqd4gYf6vsG3bFD4","parents":["node_modules/dom-delegator/index.js"]},"node_modules/dom-delegator/node_modules/global/document.js":{"index":21,"hash":"03o+x3wdGOEtc9mkRLua","parents":["node_modules/dom-delegator/dom-delegator.js","node_modules/dom-delegator/index.js"]},"node_modules/camelize/index.js":{"index":12,"hash":"RezMP6zkJacA3xNhX2fl","parents":["node_modules/error/typed.js"]},"node_modules/string-template/index.js":{"index":129,"hash":"NUV6nAzvNFu/NNqhHtCH","parents":["node_modules/error/typed.js"]},"node_modules/xtend/mutable.js":{"index":178,"hash":"zwbl6bCoaC8SKgMawk05","parents":["node_modules/error/typed.js"]},"node_modules/error/typed.js":{"index":41,"hash":"ZsvOVujWUSHf4KU1Rv8h","parents":["node_modules/main-loop/index.js"]},"node_modules/process/browser.js":{"index":115,"hash":"d/Dio43QDX3Xt7NYvbr6","parents":["node_modules/performance-now/lib/performance-now.js"]},"node_modules/performance-now/lib/performance-now.js":{"index":114,"hash":"gxdFgpRFB4y6D7pqx1CJ","parents":["node_modules/raf/index.js"]},"node_modules/raf/index.js":{"index":116,"hash":"zYBgGM9Su52JzQ+fO+1K","parents":["node_modules/main-loop/index.js"]},"node_modules/main-loop/index.js":{"index":67,"hash":"UJhQBTf0bgwslIwe3W3j","parents":["node_modules/mercury/index.js","browser.js"]},"node_modules/virtual-dom/vnode/version.js":{"index":167,"hash":"DOTiEGmK3Zzsyc2tEULH","parents":["node_modules/virtual-dom/vnode/vtext.js","node_modules/virtual-dom/vnode/is-vnode.js","node_modules/virtual-dom/vnode/vnode.js","node_modules/virtual-dom/vnode/is-vtext.js","node_modules/virtual-dom/vnode/vpatch.js"]},"node_modules/virtual-dom/vnode/vtext.js":{"index":170,"hash":"wg0WuQ0TvKNezVNVaZdg","parents":["node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/index.js"]},"node_modules/virtual-dom/vnode/is-widget.js":{"index":166,"hash":"EnIdhulqiUPci9o3bRhi","parents":["node_modules/virtual-dom/vnode/vnode.js","node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/virtual-dom/vtree/diff.js","node_modules/virtual-dom/vdom/create-element.js","node_modules/virtual-dom/vdom/update-widget.js","node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/virtual-dom/vnode/is-thunk.js":{"index":162,"hash":"JgqYSVwfC6W0CqfLC9Fu","parents":["node_modules/virtual-dom/vnode/vnode.js","node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/virtual-dom/vtree/diff.js"]},"node_modules/virtual-dom/vnode/is-vhook.js":{"index":163,"hash":"FEbZWoZabeqhJGW5pqrb","parents":["node_modules/virtual-dom/vnode/vnode.js","node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/vtree/diff-props.js","node_modules/virtual-dom/vdom/apply-properties.js"]},"node_modules/has-binary/index.js":{"index":56,"hash":"ZLLgu+QfLGB5FJs6P2Ow","parents":["node_modules/socket.io-client/lib/socket.js","node_modules/engine.io-parser/lib/browser.js"]},"node_modules/socket.io-client/lib/socket.js":{"index":122,"hash":"mVenx7k8VFtvIejsDYOl","parents":["node_modules/socket.io-client/lib/manager.js","node_modules/socket.io-client/lib/index.js"]},"node_modules/socket.io-parser/index.js":{"index":126,"hash":"BAgSAi2yJ1LAoE3Vw1D4","parents":["node_modules/socket.io-client/lib/socket.js","node_modules/socket.io-client/lib/manager.js","node_modules/socket.io-client/lib/index.js"]},"node_modules/socket.io-parser/binary.js":{"index":125,"hash":"bAee8RukaXwuD/OeGN6F","parents":["node_modules/socket.io-parser/index.js"]},"node_modules/fft-js/src/complex.js":{"index":46,"hash":"NzRu4A9deVCjcwi5BT+J","parents":["node_modules/fft-js/src/fftutil.js","node_modules/fft-js/src/dft.js","node_modules/fft-js/src/fft.js"]},"node_modules/fft-js/src/fftutil.js":{"index":49,"hash":"uNEC6ckW2fxMa/+CfXr3","parents":["node_modules/fft-js/src/dft.js","node_modules/fft-js/src/fft.js","node_modules/fft-js/index.js"]},"node_modules/fft-js/src/dft.js":{"index":47,"hash":"eZTzD1DrIFMZXu4rr0g/","parents":["node_modules/fft-js/index.js"]},"node_modules/bit-twiddle/twiddle.js":{"index":8,"hash":"dC+EQtYP6uNftG95SxFB","parents":["node_modules/fft-js/src/fft.js"]},"node_modules/fft-js/src/fft.js":{"index":48,"hash":"nbbRWKLE5Wtn2UaDIa5U","parents":["node_modules/fft-js/index.js"]},"node_modules/fft-js/index.js":{"index":45,"hash":"GotXGK1FzjieBZ2aep6W","parents":["render.js"]},"node_modules/value-event/node_modules/xtend/has-keys.js":{"index":137,"hash":"2+eWCAg8LA4O8hN1anSi","parents":["node_modules/value-event/node_modules/xtend/index.js"]},"node_modules/form-data-set/index.js":{"index":51,"hash":"/BHlb5/rXKUABG7lxyH4","parents":["node_modules/form-data-set/element.js"]},"node_modules/dom-walk/index.js":{"index":24,"hash":"5WTr9z17mIPFM/vuAwt6","parents":["node_modules/form-data-set/element.js"]},"node_modules/value-event/value.js":{"index":140,"hash":"DWkvijrG4DH57P6hAAKO","parents":["node_modules/mercury/index.js"]},"node_modules/vdom-thunk/shallow-eq.js":{"index":144,"hash":"OhqYVXBzcMCIrkzSP+4L","parents":["node_modules/vdom-thunk/partial.js"]},"node_modules/vdom-thunk/immutable-thunk.js":{"index":141,"hash":"TppaBT9mODp1puCswzq6","parents":["node_modules/vdom-thunk/partial.js"]},"node_modules/vdom-thunk/partial.js":{"index":143,"hash":"MN2YK5aYb3sUuo7l4GZe","parents":["node_modules/vdom-thunk/index.js"]},"node_modules/vdom-thunk/index.js":{"index":142,"hash":"PXODlvHP7pPx/Df6RtAB","parents":["node_modules/mercury/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/handle-thunk.js":{"index":80,"hash":"T/onB7jD0IVaUmjunIKM","parents":["node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/is-vnode.js":{"index":83,"hash":"FDpmod5Su6OvKspP7Lkx","parents":["node_modules/mercury/node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js","node_modules/mercury/node_modules/virtual-dom/vnode/vnode.js","node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/is-vtext.js":{"index":84,"hash":"YpQcCD/14F1aFXVYTL/I","parents":["node_modules/mercury/node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js","node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/version.js":{"index":86,"hash":"M4aGaQEohe0J4i1BWywB","parents":["node_modules/mercury/node_modules/virtual-dom/vnode/is-vnode.js","node_modules/mercury/node_modules/virtual-dom/vnode/is-vtext.js","node_modules/mercury/node_modules/virtual-dom/vnode/vpatch.js","node_modules/mercury/node_modules/virtual-dom/vnode/vtext.js","node_modules/mercury/node_modules/virtual-dom/vnode/vnode.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/vpatch.js":{"index":88,"hash":"MJVlIbEahmt/8PkdqcCm","parents":["node_modules/mercury/node_modules/virtual-dom/vtree/diff.js","node_modules/mercury/node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/is-object/index.js":{"index":61,"hash":"MUxlLZUU//dKFOPJOxKs","parents":["node_modules/mercury/node_modules/virtual-dom/vtree/diff-props.js","node_modules/mercury/node_modules/virtual-dom/vdom/apply-properties.js","node_modules/virtual-dom/vtree/diff-props.js","node_modules/virtual-dom/vdom/apply-properties.js"]},"node_modules/mercury/node_modules/virtual-dom/vtree/diff-props.js":{"index":90,"hash":"1otM+ABfMRMMFfmMgSnC","parents":["node_modules/mercury/node_modules/virtual-dom/vtree/diff.js"]},"node_modules/mercury/node_modules/virtual-dom/vtree/diff.js":{"index":91,"hash":"2owjmFjZwEjnTBAPzEP5","parents":["node_modules/mercury/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vdom/apply-properties.js":{"index":70,"hash":"eJQfHtLvbzWRhmAbq74/","parents":["node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js","node_modules/mercury/node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/mercury/node_modules/virtual-dom/vdom/create-element.js":{"index":71,"hash":"EU/pk5pZsyLFx67s2EoU","parents":["node_modules/mercury/node_modules/virtual-dom/vdom/patch-op.js","node_modules/mercury/index.js"]},"node_modules/browser-split/index.js":{"index":11,"hash":"wOoDDqivqVK8yNeMmiIY","parents":["node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/parse-tag.js","node_modules/virtual-dom/virtual-hyperscript/parse-tag.js"]},"node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/parse-tag.js":{"index":79,"hash":"osu8XFhBGgyHnmXBZSOC","parents":["node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/vtext.js":{"index":89,"hash":"wg0WuQ0TvKNezVNVaZdg","parents":["node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vnode/vnode.js":{"index":87,"hash":"Ll6I+kyTeUcnCfEggmis","parents":["node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/observ-array/lib/set-non-enumerable.js":{"index":99,"hash":"Z7+NOhZqPyZ1tK+HDjCF","parents":["node_modules/observ-array/add-listener.js","node_modules/observ-array/splice.js","node_modules/observ-array/put.js","node_modules/observ-array/set.js","node_modules/observ-array/array-reverse.js","node_modules/observ-array/array-sort.js"]},"node_modules/observ-array/add-listener.js":{"index":93,"hash":"rrxsk4ZG0paF7x6RW9sa","parents":["node_modules/observ-array/splice.js","node_modules/observ-array/put.js","node_modules/observ-array/apply-patch.js","node_modules/observ-array/index.js"]},"node_modules/observ-array/splice.js":{"index":102,"hash":"KFBy8d8KGS0NqNe+o0Na","parents":["node_modules/observ-array/index.js"]},"node_modules/observ-array/put.js":{"index":100,"hash":"bCedUBRr12hj9khUXrj4","parents":["node_modules/observ-array/index.js"]},"node_modules/adiff/index.js":{"index":3,"hash":"u7xn1HPbooTouevqO9G9","parents":["node_modules/observ-array/set.js"]},"node_modules/virtual-dom/vnode/is-vnode.js":{"index":164,"hash":"FDpmod5Su6OvKspP7Lkx","parents":["node_modules/virtual-dom/vnode/vnode.js","node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/virtual-dom/vtree/diff.js","node_modules/virtual-dom/vdom/create-element.js"]},"node_modules/virtual-dom/vnode/vnode.js":{"index":168,"hash":"Ll6I+kyTeUcnCfEggmis","parents":["node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/index.js"]},"node_modules/virtual-dom/virtual-hyperscript/hooks/soft-set-hook.js":{"index":158,"hash":"AKVlBuGYEy8Jcyp8v/pX","parents":["node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/virtual-dom/node_modules/global/document.js":{"index":149,"hash":"03o+x3wdGOEtc9mkRLua","parents":["node_modules/virtual-dom/vdom/create-element.js","node_modules/virtual-dom/vdom/patch.js"]},"node_modules/virtual-dom/vdom/dom-index.js":{"index":153,"hash":"Q/z8Hr/aeiHZDu3PqlER","parents":["node_modules/virtual-dom/vdom/patch.js"]},"node_modules/observ-array/apply-patch.js":{"index":94,"hash":"NCaZvQWXJ3JzcLjx0uv4","parents":["node_modules/observ-array/set.js","node_modules/observ-array/array-reverse.js","node_modules/observ-array/array-sort.js"]},"node_modules/observ-array/set.js":{"index":101,"hash":"vimtn+HBYwH0LBLZXO0o","parents":["node_modules/observ-array/index.js"]},"node_modules/observ-array/array-reverse.js":{"index":96,"hash":"8dh5AroXNCJYN1qFmfy9","parents":["node_modules/observ-array/array-methods.js"]},"node_modules/observ-array/array-sort.js":{"index":97,"hash":"g8NUwlt1W0XmdE/mhoGj","parents":["node_modules/observ-array/array-methods.js"]},"node_modules/observ-array/array-methods.js":{"index":95,"hash":"1fVmKhHYnZg5f9I1UibI","parents":["node_modules/observ-array/index.js"]},"node_modules/observ-array/index.js":{"index":98,"hash":"Ig4Qhz5tWZPeTqsqFd5V","parents":["node_modules/observ-array/array-methods.js","node_modules/mercury/index.js"]},"node_modules/mercury/node_modules/virtual-dom/vdom/update-widget.js":{"index":75,"hash":"PUUzad5Yr/YxGu0jLhxK","parents":["node_modules/mercury/node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/mercury/node_modules/virtual-dom/vdom/patch-op.js":{"index":73,"hash":"t80rxD/9w4yXrMAdRr2i","parents":["node_modules/mercury/node_modules/virtual-dom/vdom/patch.js"]},"node_modules/mercury/node_modules/virtual-dom/vdom/patch.js":{"index":74,"hash":"hm9hYurnlnqgnDcdqnHc","parents":["node_modules/mercury/index.js"]},"node_modules/dom-delegator/add-event.js":{"index":18,"hash":"J35BpWrXLdtMXDCKsSIy","parents":["node_modules/dom-delegator/dom-delegator.js"]},"node_modules/ev-store/index.js":{"index":42,"hash":"GPec7cSnjAUoioi+HEwF","parents":["node_modules/dom-delegator/add-event.js","node_modules/dom-delegator/remove-event.js","node_modules/dom-delegator/dom-delegator.js","node_modules/virtual-dom/virtual-hyperscript/hooks/ev-hook.js","node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/hooks/ev-hook.js"]},"node_modules/dom-delegator/remove-event.js":{"index":23,"hash":"pmXwl9utiz+tTVPlsQi4","parents":["node_modules/dom-delegator/dom-delegator.js"]},"node_modules/inherits/inherits_browser.js":{"index":60,"hash":"NKmKH8054SrbyYzC1tw9","parents":["node_modules/dom-delegator/proxy-event.js"]},"node_modules/dom-delegator/proxy-event.js":{"index":22,"hash":"ovI0em8uwfa06myI07Qf","parents":["node_modules/dom-delegator/dom-delegator.js"]},"node_modules/weakmap-shim/hidden-store.js":{"index":174,"hash":"wz6lY2tTxpt897LT2+1E","parents":["node_modules/weakmap-shim/create-store.js"]},"node_modules/weakmap-shim/create-store.js":{"index":173,"hash":"TLvOGWGV+rjuwcjvTCri","parents":["node_modules/dom-delegator/dom-delegator.js"]},"node_modules/dom-delegator/dom-delegator.js":{"index":19,"hash":"MO7jhLa9hW2L59TmPtjV","parents":["node_modules/dom-delegator/index.js"]},"node_modules/virtual-dom/vnode/is-vtext.js":{"index":165,"hash":"YpQcCD/14F1aFXVYTL/I","parents":["node_modules/virtual-dom/virtual-hyperscript/index.js","node_modules/virtual-dom/vnode/handle-thunk.js","node_modules/virtual-dom/vtree/diff.js","node_modules/virtual-dom/vdom/create-element.js"]},"node_modules/virtual-dom/virtual-hyperscript/parse-tag.js":{"index":160,"hash":"E9t51hE2h4ENFoYEyo9D","parents":["node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/virtual-dom/virtual-hyperscript/hooks/ev-hook.js":{"index":157,"hash":"lm34o29DbosiGB97NNRq","parents":["node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/virtual-dom/virtual-hyperscript/index.js":{"index":159,"hash":"tdRXcUcZ8m5S584s7gcA","parents":["node_modules/virtual-dom/h.js"]},"node_modules/virtual-dom/vnode/handle-thunk.js":{"index":161,"hash":"T/onB7jD0IVaUmjunIKM","parents":["node_modules/virtual-dom/vtree/diff.js","node_modules/virtual-dom/vdom/create-element.js"]},"node_modules/virtual-dom/vnode/vpatch.js":{"index":169,"hash":"MJVlIbEahmt/8PkdqcCm","parents":["node_modules/virtual-dom/vtree/diff.js","node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/virtual-dom/vtree/diff-props.js":{"index":171,"hash":"1otM+ABfMRMMFfmMgSnC","parents":["node_modules/virtual-dom/vtree/diff.js"]},"node_modules/virtual-dom/vtree/diff.js":{"index":172,"hash":"TMkbTHsG9cQWvir0aZ4K","parents":["node_modules/virtual-dom/diff.js"]},"node_modules/virtual-dom/diff.js":{"index":146,"hash":"lXWPpzBRq7hc4xwcZY5C","parents":["node_modules/virtual-dom/index.js"]},"node_modules/virtual-dom/vdom/apply-properties.js":{"index":151,"hash":"eJQfHtLvbzWRhmAbq74/","parents":["node_modules/virtual-dom/vdom/create-element.js","node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/virtual-dom/vdom/create-element.js":{"index":152,"hash":"EU/pk5pZsyLFx67s2EoU","parents":["node_modules/virtual-dom/create-element.js","node_modules/virtual-dom/vdom/patch.js"]},"node_modules/virtual-dom/create-element.js":{"index":145,"hash":"gLUXNTAWcfxRJi0jMQ9n","parents":["node_modules/virtual-dom/index.js"]},"node_modules/engine.io-parser/lib/keys.js":{"index":40,"hash":"oFyKNTA0twlyQVhVzp9n","parents":["node_modules/engine.io-parser/lib/browser.js"]},"node_modules/utf8/utf8.js":{"index":131,"hash":"Mqm8G2xyYXmBOFrE+/6A","parents":["node_modules/engine.io-parser/lib/browser.js"]},"node_modules/arraybuffer.slice/index.js":{"index":5,"hash":"RSb5Zx9CgX3adjzbvf/k","parents":["node_modules/engine.io-parser/lib/browser.js"]},"node_modules/after/index.js":{"index":4,"hash":"NzPfXWECmM8rW/6fdkcj","parents":["node_modules/engine.io-parser/lib/browser.js"]},"node_modules/blob/index.js":{"index":9,"hash":"q7L6uHK9eN9yEvDVNxJw","parents":["node_modules/engine.io-parser/lib/browser.js"]},"node_modules/base64-arraybuffer/lib/base64-arraybuffer.js":{"index":7,"hash":"dW6cnktjBIyZ6bv9vRp2","parents":["node_modules/engine.io-parser/lib/browser.js"]},"node_modules/engine.io-parser/lib/browser.js":{"index":39,"hash":"Xr2KhMDa3GjqERGsK7Lc","parents":["node_modules/engine.io-client/lib/transport.js","node_modules/engine.io-client/lib/transports/websocket.js","node_modules/engine.io-client/lib/transports/polling.js","node_modules/engine.io-client/lib/socket.js","node_modules/engine.io-client/lib/index.js"]},"node_modules/engine.io-client/node_modules/parseuri/index.js":{"index":38,"hash":"c/c7XftSI6ClFc9h2jOh","parents":["node_modules/engine.io-client/lib/socket.js"]},"node_modules/parseqs/index.js":{"index":112,"hash":"FI4tRELwI5Itz+ckwR+m","parents":["node_modules/engine.io-client/lib/transports/websocket.js","node_modules/engine.io-client/lib/transports/polling.js","node_modules/engine.io-client/lib/socket.js"]},"node_modules/parsejson/index.js":{"index":111,"hash":"3RLuznQNKZiQ/toCXNir","parents":["node_modules/engine.io-client/lib/socket.js"]},"node_modules/ev-store/node_modules/individual/index.js":{"index":43,"hash":"slR1G+HPCuudSb4q07OZ","parents":["node_modules/ev-store/node_modules/individual/one-version.js"]},"node_modules/ev-store/node_modules/individual/one-version.js":{"index":44,"hash":"Xmlm2MjHcE1cVA7a4fNz","parents":["node_modules/ev-store/index.js"]},"node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/hooks/ev-hook.js":{"index":76,"hash":"lm34o29DbosiGB97NNRq","parents":["node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js"]},"node_modules/mercury/node_modules/virtual-dom/virtual-hyperscript/index.js":{"index":78,"hash":"yRsnfKJEfb3thKXL3+Yo","parents":["node_modules/mercury/index.js"]},"node_modules/mercury/index.js":{"index":68,"hash":"iypfxilRxnisfmynQ9Wf","parents":["browser.js"]},"node_modules/virtual-dom/vdom/update-widget.js":{"index":156,"hash":"PUUzad5Yr/YxGu0jLhxK","parents":["node_modules/virtual-dom/vdom/patch-op.js"]},"node_modules/virtual-dom/vdom/patch-op.js":{"index":154,"hash":"yap3UIU6PraiJ/hBgyv3","parents":["node_modules/virtual-dom/vdom/patch.js"]},"node_modules/virtual-dom/vdom/patch.js":{"index":155,"hash":"wNFrOwhABvQyzyIZnhi6","parents":["node_modules/virtual-dom/patch.js"]},"node_modules/virtual-dom/patch.js":{"index":150,"hash":"At7MHaN+iyN3Kt0YpeOd","parents":["node_modules/virtual-dom/index.js"]},"node_modules/virtual-dom/index.js":{"index":148,"hash":"V62ynNXeILNWwH6GcwzS","parents":["browser.js"]},"node_modules/engine.io-client/lib/transport.js":{"index":28,"hash":"8Wg7zuMzQpa+AwOxaesw","parents":["node_modules/engine.io-client/lib/transports/websocket.js","node_modules/engine.io-client/lib/transports/polling.js","node_modules/engine.io-client/lib/socket.js"]},"node_modules/engine.io-client/node_modules/ms/index.js":{"index":37,"hash":"rzSu41c+6ZW8M4Say8X9","parents":["node_modules/engine.io-client/node_modules/debug/debug.js"]},"node_modules/engine.io-client/node_modules/debug/debug.js":{"index":36,"hash":"yqdR7nJc7wxIHzFDNzG+","parents":["node_modules/engine.io-client/node_modules/debug/browser.js"]},"node_modules/engine.io-client/node_modules/debug/browser.js":{"index":35,"hash":"PENVCHp3HppeRm/DiJMI","parents":["node_modules/engine.io-client/lib/transports/websocket.js","node_modules/engine.io-client/lib/transports/polling.js","node_modules/engine.io-client/lib/transports/polling-xhr.js","node_modules/engine.io-client/lib/socket.js"]},"node_modules/component-inherit/index.js":{"index":16,"hash":"T0Fqch4d4akvlr8bh7lc","parents":["node_modules/engine.io-client/lib/transports/websocket.js","node_modules/engine.io-client/lib/transports/polling-jsonp.js","node_modules/engine.io-client/lib/transports/polling.js","node_modules/engine.io-client/lib/transports/polling-xhr.js"]},"node_modules/ws/lib/browser.js":{"index":175,"hash":"vZRI95FVw46PPRoHDauJ","parents":["node_modules/engine.io-client/lib/transports/websocket.js"]},"node_modules/engine.io-client/lib/transports/websocket.js":{"index":33,"hash":"iZQQax7TKsS+8ZxUyrc3","parents":["node_modules/engine.io-client/lib/transports/index.js"]},"node_modules/engine.io-client/lib/transports/polling-jsonp.js":{"index":30,"hash":"FAm1xe7I43tDMsakGLzq","parents":["node_modules/engine.io-client/lib/transports/index.js"]},"node_modules/engine.io-client/lib/transports/polling.js":{"index":32,"hash":"m6eReXjm1pnBQHB07d2V","parents":["node_modules/engine.io-client/lib/transports/polling-jsonp.js","node_modules/engine.io-client/lib/transports/polling-xhr.js"]},"node_modules/engine.io-client/lib/xmlhttprequest.js":{"index":34,"hash":"us0FsN5s7hiT3hqVV5lx","parents":["node_modules/engine.io-client/lib/transports/polling.js","node_modules/engine.io-client/lib/transports/polling-xhr.js","node_modules/engine.io-client/lib/transports/index.js"]},"node_modules/engine.io-client/lib/transports/polling-xhr.js":{"index":31,"hash":"d89FOYRl9cirXzsJCjKg","parents":["node_modules/engine.io-client/lib/transports/index.js"]},"node_modules/global/index.js":{"index":55,"hash":"tDIf5GqqdOcKnNHRh2Rc","parents":["node_modules/has-cors/index.js"]},"node_modules/has-cors/index.js":{"index":57,"hash":"uSUdzzwBDQd7qQNKEZ4o","parents":["node_modules/engine.io-client/lib/xmlhttprequest.js"]},"node_modules/engine.io-client/lib/transports/index.js":{"index":29,"hash":"kQ8FMfawL2PES7dsQgvD","parents":["node_modules/engine.io-client/lib/socket.js"]},"node_modules/engine.io-client/lib/socket.js":{"index":27,"hash":"1L37UZEnorYV+ld5c01T","parents":["node_modules/engine.io-client/lib/index.js"]},"node_modules/engine.io-client/lib/index.js":{"index":26,"hash":"G6QYuSNu0EcS+G5tR9NE","parents":["node_modules/engine.io-client/index.js"]},"node_modules/engine.io-client/index.js":{"index":25,"hash":"HQau4MkD4lAynB9tt0Wl","parents":["node_modules/socket.io-client/lib/manager.js"]},"node_modules/socket.io-client/lib/manager.js":{"index":120,"hash":"+TrOAqk4UlI3tKzIT6Dc","parents":["node_modules/socket.io-client/lib/index.js"]},"node_modules/socket.io-client/lib/index.js":{"index":119,"hash":"lWwRhzm83+Eq08s7Nht/","parents":["node_modules/socket.io-client/index.js"]},"views/BarGraph.js":{"index":182,"hash":"0ro0NxG6kfG1PKP1qWcA","parents":["render.js"]},"render.js":{"index":180,"hash":"sOW7CL5CyNdbtlBC8x1y","parents":["browser.js"]},"browser.js":{"index":2,"hash":"OqvGXAlmtthKR1kVh3Io","parents":[]}};
+  var originalEntries = ["/home/elsehow/BitTorrent Sync/Projects/spectral-charmer/browser.js"];
   var updateUrl = "http://localhost:3123";
   var updateMode = "websocket";
   var updateCacheBust = true;
@@ -32106,4 +32410,4 @@ module.exports = spectrogram
   arguments[3], arguments[4], arguments[5], arguments[6]
 );
 
-},{"./node_modules/socket.io-client/index.js":116,"/home/elsehow/BitTorrent Sync/Projects/hot-reload/browser.js":2}]},{},[1]);
+},{"./node_modules/socket.io-client/index.js":118,"/home/elsehow/BitTorrent Sync/Projects/spectral-charmer/browser.js":2}]},{},[1]);
