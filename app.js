@@ -13,19 +13,12 @@ var Spectrogram = require('./views/Spectrogram.js')
 
 module.exports = function render (socket, draw) {
 
-  // make a fresh stream
-  var stream = Faucet(socket, 'mindwave-raw-buffers')
-
-  var buffers = stream.map(function (b) { return b.rawBuffer })
-
-  var s = FFT(buffers)
-
-  var a = Bandpass(s, 'alpha')
-  var b = Bandpass(s, 'beta')
-
-  draw(a, BarGraph, 'alpha last spectrum')
-  draw(a, Spectrogram, 'alpha spectra')
-  draw(b, BarGraph, 'beta last spectrum')
-  draw(b, Spectrogram, 'beta spectra')
+//  var stream = Faucet(socket, 'mindwave-raw-buffers')
+//  var s = FFT(stream)
+//  var a = Bandpass(s, 'alpha')
+//  var b = Bandpass(s, 'gamma')
+//
+//  draw(a, BarGraph, 'spectrum 1')
+//  draw(b, BarGraph, 'spectrum 2')
 
 };
