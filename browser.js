@@ -6,7 +6,7 @@ var hg = require('mercury')
   , main = require('main-loop')
   , appEl = document.getElementById('app')
 
-function bootstrap (appSetupFn) {
+function bootstrap (appBootstrapFn) {
 
   // remove old listeners from the websocket
   socket.removeAllListeners()
@@ -42,7 +42,7 @@ function bootstrap (appSetupFn) {
   }
   
   // pass the stream and the draw fn into the app bootstrap 
-  appSetupFn(stream, draw)
+  appBootstrapFn(stream, draw)
 
 }
 
@@ -58,16 +58,18 @@ socket.on('connect', function () {
   
   var appState = App();
   
-  bootstrap(require('./render.js'))
+  // bootstrap for starters
+  bootstrap(require('./app.js'))
   
-  // Special sauce: detect changes to the rendering code and swap the rendering
-  // function out without reloading the page.
+  // Special sauce: detect changes to the app code 
+  // and re-bootstrap the page without reloading
+  // and without disturbing the socket connection
   if (module.hot) {
   
-      module.hot.accept('./render.js', function swapModule () {
+      module.hot.accept('./app.js', function swapModule () {
   
         // set up the view again
-        bootstrap(require('./render.js'))
+        bootstrap(require('./app.js'))
   
         // Force a re-render by changing the application state.
         appState._hotVersion.set(appState._hotVersion() + 1);
