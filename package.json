@@ -11,6 +11,7 @@
     "webpack-dev-server": "^1.10.1"
   },
   "dependencies": {
+    "average": "0.0.1",
     "circular-buffer": "0.0.6",
     "fft-js": "0.0.9",
     "kefir": "^3.1.0",

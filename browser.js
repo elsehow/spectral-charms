@@ -5,8 +5,6 @@ var hg = require('mercury')
   , Kefir = require('kefir')
   , main = require('main-loop')
   , appEl = document.getElementById('app')
-  // config
-  //, appPath = './examples/app.js'
 
 function bootstrap (appBootstrapFn) {
   
@@ -59,17 +57,17 @@ socket.on('connect', function () {
   var appState = App();
 
   // bootstrap for starters
-  bootstrap(require('./examples/app.js'))
+  bootstrap(require('./examples/heartrate.js'))
   
   // Special sauce: detect changes to the app code 
   // and re-bootstrap the page without reloading
   // and without disturbing the socket connection
   if (module.hot) {
   
-      module.hot.accept('./examples/app.js', function swapModule () {
+      module.hot.accept('./examples/heartrate.js', function swapModule () {
   
         // set up the view again
-        bootstrap(require('./examples/app.js'))
+        bootstrap(require('./examples/heartrate.js'))
   
         // Force a re-render by changing the application state.
         appState._hotVersion.set(appState._hotVersion() + 1);
