@@ -5,9 +5,11 @@ var hg = require('mercury')
   , Kefir = require('kefir')
   , main = require('main-loop')
   , appEl = document.getElementById('app')
+  // config
+  , appPath = './examples/app.js'
 
 function bootstrap (appBootstrapFn) {
-
+  
   // remove old listeners from the websocket
   socket.removeAllListeners()
 
@@ -43,6 +45,7 @@ function bootstrap (appBootstrapFn) {
 
 }
 
+
 // Copied from examples/count.js
 function App () {
     return hg.state({
@@ -56,17 +59,17 @@ socket.on('connect', function () {
   var appState = App();
 
   // bootstrap for starters
-  bootstrap(require('./app.js'))
+  bootstrap(require('./examples/app.js'))
   
   // Special sauce: detect changes to the app code 
   // and re-bootstrap the page without reloading
   // and without disturbing the socket connection
   if (module.hot) {
   
-      module.hot.accept('./app.js', function swapModule () {
+      module.hot.accept('./examples/app.js', function swapModule () {
   
         // set up the view again
-        bootstrap(require('./app.js'))
+        bootstrap(require('./examples/app.js'))
   
         // Force a re-render by changing the application state.
         appState._hotVersion.set(appState._hotVersion() + 1);

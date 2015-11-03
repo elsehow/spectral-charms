@@ -1,17 +1,16 @@
 var h = require('virtual-dom/h')
 
-function number () {
+function wordview () {
 
-  return function (list) {
-    console.log(list[0])
+  return function (word) {
     return h('h1',{ style: {
       'overflow': 'hidden'
       , 'padding-bottom': '10px'
      }
-    }, list[0])
+    }, word)
   }
     
 }
 
 
-module.exports = number
+module.exports = wordview
