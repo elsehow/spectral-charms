@@ -2,9 +2,6 @@
 
 live-code with your biosignals 
 
-Using hot reloading while developing can improve your workflow.
-No more clicking through your application to a particular state each time you change the rendering code!
-
 ## Running the examples
 
 To install and run:
@@ -18,6 +15,14 @@ To install and run:
 [browser.js]: ./browser.js
 
 ## How it works
+
+## indra
+
+if you can feed your data through the indra system, you can use spectral-charmer right out of the box.
+
+check the [indra-server](https://github.com/indra-net/collection-server) project here for more information.
+
+contact @elsehow if you want access to the [BioSENSE](http://biosense.berkeley.edu) group's indra node.
 
 ### webpack
 We use browserify-hmr with watchify.

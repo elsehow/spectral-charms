@@ -6,7 +6,11 @@ var hg = require('mercury')
   , main = require('main-loop')
   , appEl = document.getElementById('app')
   // config
-  //, appPath = './examples/app.js'
+<<<<<<< HEAD
+  , appPath = './examples/app.js'
+=======
+  , appPath = './examples/mindwave.js'
+>>>>>>> 557fbdf4ff39acc777f0c954a1c339e2b64f579c
 
 function bootstrap (appBootstrapFn) {
   
@@ -59,17 +63,28 @@ socket.on('connect', function () {
   var appState = App();
 
   // bootstrap for starters
+<<<<<<< HEAD
   bootstrap(require('./examples/app.js'))
+=======
+  bootstrap(require(appPath))
+>>>>>>> 557fbdf4ff39acc777f0c954a1c339e2b64f579c
   
   // Special sauce: detect changes to the app code 
   // and re-bootstrap the page without reloading
   // and without disturbing the socket connection
   if (module.hot) {
   
+<<<<<<< HEAD
       module.hot.accept('./examples/app.js', function swapModule () {
   
         // set up the view again
         bootstrap(require('./examples/app.js'))
+=======
+      module.hot.accept(appPath, function swapModule () {
+  
+        // set up the view again
+        bootstrap(require(appPath))
+>>>>>>> 557fbdf4ff39acc777f0c954a1c339e2b64f579c
   
         // Force a re-render by changing the application state.
         appState._hotVersion.set(appState._hotVersion() + 1);
