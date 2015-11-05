@@ -3,10 +3,11 @@
 var hg = require('mercury')
   , socket = require('./socket.js')()
   , Kefir = require('kefir')
-  , main = require('main-loop')
+  , main = hg.main
   , appEl = document.getElementById('app')
+  , argv = process.argv.slice(2)
 
-function bootstrap (appBootstrapFn) {
+function bootstrap (app) {
   
   // remove old listeners from the websocket
   socket.removeAllListeners()
@@ -15,17 +16,17 @@ function bootstrap (appBootstrapFn) {
   appEl.innerHTML = ''
 
   // setup a function by which stuff in render can draw on the dom
-  function draw (trackStream, viewModule, trackDescription) {
+  function draw (track, view, docstring) {
 
     // add a div to the page
     var parent = document.createElement('div')
-    var desc   = document.createTextNode(trackDescription)
-    parent.appendChild(desc)
+    var doc    = document.createTextNode(docstring)
+    parent.appendChild(doc)
     appEl.appendChild(parent)
 
     // execute the view module to return the view's draw fn
     // (this lets us keep state in the view module)
-    var viewDrawFn = viewModule()
+    var viewDrawFn = view()
 
     var loop = main([], viewDrawFn, require('virtual-dom'))
 
@@ -34,18 +35,18 @@ function bootstrap (appBootstrapFn) {
   
     // set each value in the track's output stream 
     // to trigger a `loop.update`, which in turn triggers viewDrawFn
-    trackStream.onValue(loop.update)
+    track.onValue(loop.update)
 
   }
   
   // pass the stream and the draw fn into the app bootstrap 
-  appBootstrapFn(socket, draw)
+  app(socket, draw)
 
 }
 
 
 // Copied from examples/count.js
-function App () {
+function State () {
     return hg.state({
       _hotVersion: hg.value(0), // We use this to force refresh on hot updates
     });
@@ -53,21 +54,21 @@ function App () {
 
 
 socket.on('connect', function () {
-  
-  var appState = App();
+
+  var appState = State();
 
   // bootstrap for starters
-  bootstrap(require('./examples/heartrate.js'))
+  bootstrap(require(argv[0]))
   
   // Special sauce: detect changes to the app code 
   // and re-bootstrap the page without reloading
   // and without disturbing the socket connection
   if (module.hot) {
   
-      module.hot.accept('./examples/heartrate.js', function swapModule () {
+      module.hot.accept(argv[0], function swapModule () {
   
         // set up the view again
-        bootstrap(require('./examples/heartrate.js'))
+        bootstrap(require(argv[0]))
   
         // Force a re-render by changing the application state.
         appState._hotVersion.set(appState._hotVersion() + 1);

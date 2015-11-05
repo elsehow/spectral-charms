@@ -1,28 +1,46 @@
 {
+  "name": "spectral-charmer",
+  "version": "0.0.3",
+  "description": "livecode with your biosignals!",
+  "main": "index.js",
+  "bin": "npm run http-server && npm run watchify",
   "scripts": {
     "start": "npm run http-server && npm run watchify",
     "http-server": "http-server -c 1 -a localhost &",
     "watchify": "watchify -p browserify-hmr browser.js -o bundle.js"
   },
-  "devDependencies": {
-    "browserify-hmr": "^0.2.2",
-    "http-server": "^0.8.0",
-    "watchify": "^3.4.0",
-    "webpack-dev-server": "^1.10.1"
+  "directories": {
+    "example": "examples"
   },
   "dependencies": {
     "average": "0.0.1",
+    "browserify-hmr": "^0.2.2",
     "circular-buffer": "0.0.6",
-    "compute-incrmstdev": "^1.0.1",
     "compute-stdev": "^1.0.0",
     "fft-js": "0.0.9",
+    "http-server": "^0.8.0",
     "kefir": "^3.1.0",
-    "log-scale": "^1.0.1",
-    "main-loop": "^3.2.0",
     "mercury": "^14.0.0",
     "simple-linear-scale": "^1.0.1",
     "socket.io-client": "^1.3.7",
+    "ud": "^2.0.2",
     "virtual-dom": "^2.1.1",
-    "webpack": "^1.12.2"
-  }
+    "watchify": "^3.4.0",
+    "webpack": "^1.12.2",
+    "webpack-dev-server": "^1.10.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elsehow/spectral-charmer.git"
+  },
+  "keywords": [
+    "livecode",
+    "biosignals"
+  ],
+  "author": "elsehow",
+  "license": "BSD-2-Clause",
+  "bugs": {
+    "url": "https://github.com/elsehow/spectral-charmer/issues"
+  },
+  "homepage": "https://github.com/elsehow/spectral-charmer#readme"
 }

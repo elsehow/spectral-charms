@@ -12,13 +12,8 @@ var bands = [
   , max: 7
   }
   , {
-    name: 'low alpha'
+    name: 'alpha'
   , min: 8
-  , max: 9
-  }
-  , {
-    name: 'high-alpha'
-  , min: 10
   , max: 12
   }
   , {

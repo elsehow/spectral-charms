@@ -1,7 +1,7 @@
 var h = require('virtual-dom/h')
   , _ = require('lodash')
   , LinScale = require('simple-linear-scale')
-  , LogScale = require('log-scale')
+  //, LogScale = require('log-scale')
   , CircularBuffer = require('circular-buffer')
 
 function spectrogram () {

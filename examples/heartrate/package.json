@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "average": "0.0.1",
+    "compute-incrmstdev": "^1.0.1"
+  }
+}
