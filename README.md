@@ -40,13 +40,41 @@ Credit to [raynos](http://github.com/raynos) for this very clever trick.
 
 ## todos
 
-there is some state i'd love to persist -- for example, the historical data on grahs.  
-can the view and stream logic be separated such that updating one won't mess with the other?
+### immediately: 
 
 ideally i'd like to run this application with something like
 
-   spectral-charm my-app.js
+   var charmer = require('spectral-charmer')
 
-where my-app exposes the right function
-is there a good way to simulate this in development?
-that way, we can keep examples data / deps tidy from the main spectral-charm project. much easier. (housekeeping - do first)
+   charmer.setup(app)
+
+where `app` exposes the right kinda function
+
+and, app should be able to use modules we give them
+
+and mix-and-match easily with their own modules
+
+   var charmer  = require('spectral-charmer')
+   var patches  = charmer.patches
+   var views    = charmer.views
+
+   var ffts     = stream.map(patches.FFT)
+   var alpha    = stream.map(Bandpass('alpha')).draw(views.Spectrogram, 'alpha waves')
+
+so, this repository should be organized with an npm file
+
+FIX:
+
+`npm init` in the root again, make a new directory for each example, `npm init` in each, and make a generic readme for each
+
+refactor spectral-charmer into a module, like mercury.
+
+version to 0.0.3
+
+### later on:
+
+there is some state i'd love to persist -- for example, the historical data on grahs.  
+can the view and stream logic be separated such that updating one won't mess with the other?
+
+version to 0.1.0
+
