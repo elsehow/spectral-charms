@@ -36,3 +36,17 @@ Credit to [raynos](http://github.com/raynos) for this very clever trick.
 [hot module replacement]: https://github.com/webpack/docs/wiki/hot-module-replacement-with-webpack
 [http-server]: https://github.com/indexzero/http-server
 [browserify-hmr]: https://github.com/AgentME/browserify-hmr
+
+
+## todos
+
+there is some state i'd love to persist -- for example, the historical data on grahs.  
+can the view and stream logic be separated such that updating one won't mess with the other?
+
+ideally i'd like to run this application with something like
+
+   spectral-charm my-app.js
+
+where my-app exposes the right function
+is there a good way to simulate this in development?
+that way, we can keep examples data / deps tidy from the main spectral-charm project. much easier. (housekeeping - do first)
