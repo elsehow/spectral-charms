@@ -1,15 +1,11 @@
 'use strict';
 
 var mean = require('average')
-var patches = require('../../index.js').patches
-var views = require('../../index.js').views
 var incrstdev = require( 'compute-incrmstdev')
+var prop = function (p) { return function (x) { return x[p] } }
 
-function prop (p) {
-  return function (x) {
-    return x[p]
-  }
-}
+var patches = require('../..').patches
+var views = require('../..').views
 
 function greaterThanFifty (x) { 
   return x > 50 

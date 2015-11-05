@@ -40,9 +40,9 @@ module.exports = function render (socket, draw) {
 
   // make a ratio of alpha to beta power
   function ratio (a, b) { return mean(a) / mean(b) }
-  var a = ffts.map(Bandpass('alpha')),
+  var a = ffts.map(Bandpass('alpha'))
   var b = ffts.map(Bandpass('low beta'))
-  var alphaBeta = Kefir.combine([a,b], ratio))
+  var alphaBeta = Kefir.combine([a,b], ratio)
   draw(alphaBeta, Histogram, 'alpha beta ratio')
 
 }

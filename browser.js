@@ -21,6 +21,7 @@ function bootstrap (app) {
     // add a div to the page
     var parent = document.createElement('div')
     var doc    = document.createTextNode(docstring)
+    var doc    = document.createTextNode(argv[0])
     parent.appendChild(doc)
     appEl.appendChild(parent)
 

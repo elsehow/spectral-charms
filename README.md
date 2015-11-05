@@ -50,26 +50,13 @@ ideally i'd like to run this application with something like
 
 where `app` exposes the right kinda function
 
-and, app should be able to use modules we give them
+then you can just  `spectral-charmer app.js`
 
-and mix-and-match easily with their own modules
+.
 
-   var charmer  = require('spectral-charmer')
-   var patches  = charmer.patches
-   var views    = charmer.views
+.
 
-   var ffts     = stream.map(patches.FFT)
-   var alpha    = stream.map(Bandpass('alpha')).draw(views.Spectrogram, 'alpha waves')
-
-so, this repository should be organized with an npm file
-
-FIX:
-
-`npm init` in the root again, make a new directory for each example, `npm init` in each, and make a generic readme for each
-
-refactor spectral-charmer into a module, like mercury.
-
-version to 0.0.3
+.
 
 ### later on:
 
