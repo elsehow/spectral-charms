@@ -1,5 +1,5 @@
 var average = require('average')
-  , stdev   = require('compute-stdev'
+  , stdev   = require('compute-stdev')
 
 // takes a stream of integers `s`, 
 // a buffer size `b`, 
@@ -26,10 +26,12 @@ function standardDevThreshold (std) {
     var threshold = mean + std*dev
 
     if ((std > 0) && (value > threshold))
-      return value
+      return 1
 
     if ((std < 0) && (value < threshold))
-      return value
+      return 1
+
+    return 0
   }
 }
 
