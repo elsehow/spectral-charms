@@ -17,6 +17,7 @@
     "compute-stdev": "^1.0.0",
     "fft-js": "0.0.9",
     "kefir": "^3.1.0",
+    "lodash": "^3.10.1",
     "log-scale": "^1.0.1",
     "main-loop": "^3.2.0",
     "mercury": "^14.0.0",
