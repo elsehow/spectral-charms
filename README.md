@@ -2,66 +2,36 @@
 
 live-code with your biosignals 
 
-## Running the examples
-
-To install and run:
-
-    npm install
-
-    npm start
-
-[package.json]: ./package.json
-[render.js]: ./render.js
-[browser.js]: ./browser.js
-
 ## How it works
 
-## indra
+### special-charm
 
-if you can feed your data through the indra system, you can use spectral-charmer right out of the box.
+[special-charm](http://npmjs.com/package/special-charm) lets you live-code with event-emitters. it sits at the core of spectral charmer.
 
-check the [indra-server](https://github.com/indra-net/collection-server) project here for more information.
+### logging
 
-if you want access to the [BioSENSE](http://biosense.berkeley.edu) group's indra node, contract nick@ischool.berkeley.edu
+from your app.js, return a list like this:
 
-### webpack
-We use browserify-hmr with watchify.
-We use [http-server][] to host our example. 
-When browserify-hmr a file has changed, `module.hot.accept` gets a chance to 'claim' the reload and prevent the page from refreshing as it usually would.
-We use that opportunity to replace the function the app uses to render.
-We have to be careful to not reseat any references - so we pass a function that doesn't change to `hg.app` (i.e. `App.render`), but inside that function, we call a function which may change at runtime.
+    module.exports = (stream) => {
+      
+      var ffts = stream.slidingWindow(512).map(fft)
+    
+      return [ffts, 'FFTs']
+    }
 
-Credit to [raynos](http://github.com/raynos) for this very clever trick.
+now, every value in ffts will get saved to a log in ./charmer-logs/FFTs
 
-[hot module replacement]: https://github.com/webpack/docs/wiki/hot-module-replacement-with-webpack
-[http-server]: https://github.com/indexzero/http-server
-[browserify-hmr]: https://github.com/AgentME/browserify-hmr
+### graphing in the command line
+
+graphing is 1 step fancier.
+
+....
 
 
-## todos
 
-### immediately: 
-
-ideally i'd like to run this application with something like
-
-   var charmer = require('spectral-charmer')
-
-   charmer.setup(app)
-
-where `app` exposes the right kinda function
-
-then you can just  `spectral-charmer app.js`
-
-.
-
-.
-
-.
-
-### later on:
+## TODOS
 
 there is some state i'd love to persist -- for example, the historical data on grahs.  
 can the view and stream logic be separated such that updating one won't mess with the other?
-
-version to 0.1.0
+that would version to 0.1.0
 
