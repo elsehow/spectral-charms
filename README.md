@@ -4,7 +4,7 @@ live-code with your biosignals
 
 # NOTE -- see [simple charm](http://github.com/elsehow/simple-charm)
 
-this has bee
+this package has been deprecated while i work on that package
 
 
 ## Running the examples
