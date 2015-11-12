@@ -1,6 +1,11 @@
-# spectral charmer
+# spectral charmer 
 
 live-code with your biosignals 
+
+# NOTE -- see [simple charm](http://github.com/elsehow/simple-charm)
+
+this has bee
+
 
 ## Running the examples
 
