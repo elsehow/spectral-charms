@@ -3,3 +3,72 @@ test dir for all patches
 rate module
 
 graphing solution
+
+## john notes
+
+more of a data anlysis tool
+
+### quantifying turnaround time
+
+by reducing turnaround time, encourage experimentation, exploration,
+in the old days, wait a week before the chip comes out....turnaround time measured in the order of weeks
+here, whats the turnaround time now?
+empirical studies that measure improvement in productivity
+  - interpreted v compiled
+  - livecode versus close-and-restart
+analyzing streaming data, particular to the case of connecting to sources..
+
+### can you have the same stream of data fed through multiple functions?
+
+compare between slightly different functions
+
+### physical analogs
+
+firehose model of data
+water coming out
+you can insert different metal disks that make the water come out in patterns
+
+### databases
+
+can i continuously write into a database
+
+should log the raw stream
+
+#### end users
+
+i just bought some sensor
+if i do this, what kind of harmonics might there be from my heartrate 
+
+connects to the interpretation
+could be playful, could be informed by something or other
+if i take the 3rd derivative of my HRV, multiplied by a second sensor i have, how does it change?
+
+#### higher-dimensional data
+
+this (hr sensor) is one channel 
+
+ok i now have a crazy idea
+imagine that i have a haptic suit - 2D array of motos on the back - like a visualization
+what if i can drive those motos with my EEG - now i can feel my brainwaves
+
+david eagleman: sensory substitution
+
+> EEG => a stream of matrices of scalars, where each matrix of scalars represents state of the haptic array 
+
+deafness,
+if i want to say a word to you
+can we convert "apple" onto a haptic array
+
+### one study could be
+
+give people a haptic array
+and a sensor (or some sensors)
+and have them livecode until they're satisfied
+> (and compared to non-livecoding setup (I dont know if we need a control. -- John))
+
+
+### check out book from meena's class
+
+`body art` on syllabus
+
+

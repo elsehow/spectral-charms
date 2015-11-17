@@ -1,20 +1,13 @@
 {
   "name": "spectral-charmer",
-  "version": "0.0.4",
+  "version": "0.0.10",
   "description": "livecode with your biosignals!",
   "main": "index.js",
-  "bin": "npm run http-server && npm run watchify",
-  "scripts": {
-    "start": "npm run http-server && npm run watchify",
-    "http-server": "http-server dist/ -c 1 -a localhost &",
-    "watchify": "watchify -p browserify-hmr browser.js -o dist/bundle.js"
-  },
-  "directories": { "example": "examples"
-  },
   "dependencies": {
     "average": "0.0.1",
     "compute-stdev": "^1.0.0",
-    "kefir": "^3.1.0"
+    "kefir": "^3.1.0",
+    "simple-charm": "^0.3.2"
   },
   "repository": {
     "type": "git",
