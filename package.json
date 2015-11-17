@@ -1,6 +1,6 @@
 {
   "name": "spectral-charmer",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "livecode with your biosignals!",
   "main": "index.js",
   "dependencies": {
