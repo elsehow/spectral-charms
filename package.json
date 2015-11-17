@@ -1,6 +1,6 @@
 {
   "name": "spectral-charmer",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "livecode with your biosignals!",
   "main": "index.js",
   "bin": "npm run http-server && npm run watchify",

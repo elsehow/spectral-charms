@@ -2,7 +2,7 @@
 
 live-code with your biosignals 
 
-**NOTE - this package is under rapid development.**
+**NOTE - this package is under rapid development. use at your own risk!!**
 
 see [simple charm](http://github.com/elsehow/simple-charm) for something that works! this package is built around that, anyway
 
