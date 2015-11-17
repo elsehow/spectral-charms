@@ -2,9 +2,7 @@
   "name": "spectral-charmer",
   "version": "0.0.5",
   "description": "livecode with your biosignals!",
-  "main": "index.js",
-  "directories": { "example": "examples"
-  },
+  "main": "index.js"
   "dependencies": {
     "average": "0.0.1",
     "compute-stdev": "^1.0.0",
