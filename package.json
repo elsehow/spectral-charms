@@ -3,12 +3,6 @@
   "version": "0.0.4",
   "description": "livecode with your biosignals!",
   "main": "index.js",
-  "bin": "npm run http-server && npm run watchify",
-  "scripts": {
-    "start": "npm run http-server && npm run watchify",
-    "http-server": "http-server dist/ -c 1 -a localhost &",
-    "watchify": "watchify -p browserify-hmr browser.js -o dist/bundle.js"
-  },
   "directories": { "example": "examples"
   },
   "dependencies": {
