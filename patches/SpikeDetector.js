@@ -17,7 +17,9 @@ var average = require('average')
 // for which the value was -2 standard deviations less than
 // the mean of the last 1000 values.
 
-function standardDevThreshold (std) {
+function isTruthy (x) { if (!(x == null)) return x }
+
+function aboveThreshold (std) {
 
   return function (value, buffer) {
 
@@ -26,16 +28,20 @@ function standardDevThreshold (std) {
     var threshold = mean + std*dev
 
     if ((std > 0) && (value > threshold))
-      return 1
+      return value
 
     if ((std < 0) && (value < threshold))
-      return 1
+      return value
 
-    return 0
+    return null
   }
 }
 
+module.exports = function (stream, bufferSize, stdevThreshold) {
 
-module.exports = function (s, b, stdev) {
-  return s.combine(s.slidingWindow(b), standardDevThreshold(stdev))
+  return stream
+    .combine(s.slidingWindow(bufferSize), aboveThreshold(stdevThreshold))
+    .filter(isTruthy)
+    .skipDuplicates()
+    
 }
