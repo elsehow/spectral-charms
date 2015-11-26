@@ -1,6 +1,7 @@
+
 module.exports = {
 
-  charm: require('simple-charm'),
+  stream: require('./sources/kefir.js'),
 
   patches: {
     SpikeDetector: require('./patches/SpikeDetector'),
