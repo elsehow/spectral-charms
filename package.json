@@ -1,12 +1,13 @@
 {
   "name": "spectral-charms",
-  "version": "0.0.12",
+  "version": "0.0.17",
   "description": "livecode with your biosignals!",
   "main": "index.js",
   "dependencies": {
     "average": "0.0.1",
     "compute-stdev": "^1.0.0",
     "kefir": "^3.1.0",
+    "lodash": "^3.10.1",
     "main-loop": "^3.2.0",
     "simple-charm": "^0.3.2",
     "simple-linear-scale": "^1.0.1",

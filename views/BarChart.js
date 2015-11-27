@@ -1,5 +1,6 @@
 var h = require('virtual-dom/h')
   , main = require('main-loop')
+  , _ = require('lodash')
   , LinScale = require('simple-linear-scale')
 
 module.exports = function (stream) {
@@ -51,8 +52,9 @@ module.exports = function (stream) {
   // here we setup a div 
   // and main-loop
   // we add a div to the page
+  var viewsEl = document.getElementById('views')
   var ourDiv = document.createElement('div')
-  document.appendChild(ourDiv)
+  views.appendChild(ourDiv)
   // `loop.update` will pass values to `makeGraph`
   var loop = main([], makeGraph, require('virtual-dom'))
   // now add loop to div
@@ -63,6 +65,3 @@ module.exports = function (stream) {
   stream.map(makeGraph).onValue(loop.update)
 
 }
-
-
-module.exports = spectrogram

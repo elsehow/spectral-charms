@@ -7,4 +7,8 @@ module.exports = {
     SpikeDetector: require('./patches/SpikeDetector'),
   },
 
+  views: {
+    BarChart: require('./views/BarChart')
+  }
+
 }
