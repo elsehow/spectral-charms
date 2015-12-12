@@ -1,5 +1,7 @@
+
 var average = require('average')
   , stdev   = require('compute-stdev')
+  , _       = require('lodash')
 
 // takes a stream of integers `s`, 
 // a buffer size `b`, 
@@ -19,25 +21,28 @@ var average = require('average')
 
 function isTruthy (x) { if (!(x == null)) return x }
 
-function aboveThreshold (std) {
+function aboveThreshold (stream, std) {
 
-  return function (value, buffer) {
+  return stream.map(buffer => {
 
+    var value     = _.last(buffer)
     var mean      = average(buffer)
     var dev       = stdev(buffer)
     var threshold = mean + std*dev
 
-    if ((std > 0) && (value > threshold))
+    if ((std > 0) && ( value > threshold))
       return value
 
     if ((std < 0) && (value < threshold))
       return value
 
     return null
-  }
+  })
+
 }
 
 module.exports = function (stream, bufferSize, stdevThreshold) {
-  return stream.combine(stream.slidingWindow(bufferSize), aboveThreshold(stdevThreshold))
+  return aboveThreshold(stream.slidingWindow(bufferSize), stdevThreshold)
     
 }
+

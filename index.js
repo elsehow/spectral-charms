@@ -3,6 +3,7 @@ module.exports = {
 
   patches: {
     SpikeDetector: require('./patches/SpikeDetector'),
+    Rate: require('./patches/Rate'),
   },
 
   views: {
