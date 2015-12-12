@@ -38,8 +38,6 @@ function aboveThreshold (std) {
 }
 
 module.exports = function (stream, bufferSize, stdevThreshold) {
-
-  return stream
-    .combine(stream.slidingWindow(bufferSize), aboveThreshold(stdevThreshold))
+  return stream.combine(stream.slidingWindow(bufferSize), aboveThreshold(stdevThreshold))
     
 }
