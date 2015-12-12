@@ -1,10 +1,11 @@
 {
   "name": "spectral-charms",
-  "version": "0.0.20",
+  "version": "0.0.27",
   "description": "livecode with your biosignals!",
   "main": "index.js",
   "dependencies": {
     "average": "0.0.1",
+    "circular-buffer": "0.0.6",
     "compute-stdev": "^1.0.0",
     "lodash": "^3.10.1",
     "main-loop": "^3.2.0",

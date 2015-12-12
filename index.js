@@ -6,7 +6,7 @@ module.exports = {
   },
 
   views: {
-    BarChart: require('./views/BarChart'),
+    BarGraph: require('./views/BarGraph'),
     Histogram: require('./views/Histogram'),
     Log: require('./views/Log'),
   }
